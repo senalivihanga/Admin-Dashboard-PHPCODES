@@ -27,7 +27,8 @@
 // which breaks the string matching in public/index.php and causes an
 // infinite redirect loop (ERR_TOO_MANY_REDIRECTS).
 
-define('BASE_URL', '/Quarters_Management_System-master/Quarters_Management_System-master');  // ← CHANGE THIS ONLY! (must match your htdocs folder, no spaces)
+define('BASE_URL', '/Quarters_Management_System-V2/Quarters_Management_System-V2');  // ← CHANGE THIS ONLY! (must match your htdocs folder, no spaces)
+//http://localhost/Quarters_Management_System-V2/Quarters_Management_System-V2/
 
 
 

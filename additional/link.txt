@@ -1,2 +1,1 @@
-http://localhost/QMS/applicants_dashboard/public/login
-http://localhost/Quarter_Management_System/QMS 
+http://localhost/Quarters_Management_System-V2/Quarters_Management_System-V2/
