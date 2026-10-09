@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Application Successful - Sri Lanka Railways</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f6f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .success-card {
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+        .success-icon {
+            font-size: 50px;
+            color: #28a745;
+            margin-bottom: 20px;
+        }
+        h2 {
+            color: #0f4c81;
+            margin-bottom: 15px;
+        }
+        p {
+            color: #333;
+            font-size: 16px;
+            line-height: 1.5;
+            margin-bottom: 25px;
+        }
+        .app-number {
+            font-weight: bold;
+            color: #007bff;
+            background: #e9ecef;
+            padding: 10px 15px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-bottom: 25px;
+            font-size: 18px;
+        }
+        .btn-home {
+            background-color: #0f4c81;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 16px;
+        }
+        .btn-home:hover {
+            background-color: #0d3d6b;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="success-card">
+        <div class="success-icon">&#10004;</div>
+        <h2>Application Submitted Successfully!</h2>
+        <p>Your application for Sri Lanka Railways Quarters has been successfully received. Your reference number is shown below:</p>
+        
+        <div>
+            <!-- ነባර අංකය වෙනුවට Dynamic ලෙස වෙනස් වන ස්ථානය -->
+            <span id="display-app-no" class="app-number">SLR/AOT/2026/0001</span>
+        </div>
+
+        <div>
+            <a href="applicant_dashboard.html" class="btn-home">Go to Applicant Dashboard</a>
+        </div>
+    </div>
+
+    <script>
+        // URL එකෙන් ලැබෙන අංකය (ဥပද්‍රව්‍ය: ?appNo=SLR/AOT/2026/0045) පරීක්ෂා කිරීම
+        const urlParams = new URLSearchParams(window.location.search);
+        const appNo = urlParams.get('appNo');
+        
+        if (appNo) {
+            document.getElementById('display-app-no').textContent = appNo;
+        } else {
+            // URL එකේ අංකයක් නොමැති නම්, ස්වයංක්‍රීයව වත්මන් වර්ෂය (Current Year) සහ 0001 පෙන්වීමට අවශ්‍ය නම්:
+            const currentYear = new Date().getFullYear();
+            // ඔබට අවශ්‍ය නම් මෙහිදී අංකය Database එකෙන් හෝ ඊළඟ අංකය (Auto-increment) ලෙස generate කරගත හැක.
+            // උදාහරණයක් ලෙස: 
+            // document.getElementById('display-app-no').textContent = `SLR/AOT/${currentYear}/0001`;
+        }
+    </script>
+</body>
+</html>

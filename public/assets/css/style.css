@@ -1,0 +1,64 @@
+/* ==========================================
+   GLOBAL & RESET STYLES
+   ========================================== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+    background-color: #fcfbfa;
+    color: #111111;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ==========================================
+   DROPDOWN STYLES
+   ========================================== */
+.profile-dropdown-container {
+    position: relative;
+}
+
+#profileDropdown {
+    display: none;
+}
+
+#profileDropdown:not(.hidden) {
+    display: block !important;
+}
+
+/* ==========================================
+   TOAST NOTIFICATION
+   ========================================== */
+#toast-message {
+    transition: all 0.3s ease;
+    pointer-events: none;
+}
+
+/* ==========================================
+   UTILITY CLASSES
+   ========================================== */
+.text-amber-200 {
+    color: #fde047;
+}
+
+.border-amber-400 {
+    border-color: #b59410;
+}
+
+.bg-amber-50 {
+    background-color: #fdf8f0;
+}
+
+/* ==========================================
+   RESPONSIVE FIXES
+   ========================================== */
+@media (max-width: 640px) {
+    .slr-logo {
+        height: 50px !important;
+    }
+}
