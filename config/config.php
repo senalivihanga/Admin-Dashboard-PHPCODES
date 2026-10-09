@@ -37,7 +37,7 @@ define('BASE_URL', '/Quarters_Management_System-master/Quarters_Management_Syste
 define('DB_HOST', 'localhost');
 define('DB_USER', 'root');
 define('DB_PASS', '');
-define('DB_NAME', 'applicants_db');
+define('DB_NAME', 'qms_database_updated');
 
 // ==========================================
 // 3. APPLICATION SETTINGS
