@@ -180,6 +180,47 @@ function route($path, $method = 'GET') {
         return;
     }
 
+    if ($path === '/offer/respond' && $method === 'POST') {
+        require_once __DIR__ . '/../src/controllers/OfferController.php';
+        $controller = new OfferController();
+        $controller->respond();
+        return;
+    }
+
+    // ==========================================
+// PREFERENCE SAVING ROUTES
+// ==========================================
+if ($path === '/application/save-residence' && $method === 'POST') {
+    require_once __DIR__ . '/../src/controllers/PreferenceController.php';
+    $controller = new PreferenceController();
+    $controller->saveResidenceType();
+    return;
+}
+
+if ($path === '/application/save-language' && $method === 'POST') {
+    require_once __DIR__ . '/../src/controllers/PreferenceController.php';
+    $controller = new PreferenceController();
+    $controller->saveLanguage();
+    return;
+}
+
+    $approvalActions = [
+        '/approval/clerk/submit' => 'submitClerk',
+        '/approval/deputy/submit' => 'submitSuperintendent',
+        '/approval/marks/submit' => 'submitMarks'
+    ];
+    if ($method === 'POST' && isset($approvalActions[$path])) {
+        require_once __DIR__ . '/../src/controllers/ApprovalController.php';
+        try {
+            $controller = new ApprovalController();
+            $controller->{$approvalActions[$path]}();
+        } catch (Throwable $error) {
+            $_SESSION['approval_error'] = $error->getMessage();
+            redirect('/dashboard');
+        }
+        return;
+    }
+
     // Check if path is in routes
     if (isset($routes[$path])) {
         $viewPath = __DIR__ . '/../src/views' . $routes[$path];
@@ -240,6 +281,7 @@ function handleAjaxRequest($action, $data) {
 // ==========================================
 // EXECUTE ROUTING
 // ==========================================
+
 $requestUri = $_SERVER['REQUEST_URI'];
 $requestMethod = $_SERVER['REQUEST_METHOD'];
 

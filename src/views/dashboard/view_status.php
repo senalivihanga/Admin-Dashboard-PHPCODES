@@ -6,9 +6,9 @@ require_once __DIR__ . '/../../controllers/ApplicationController.php';
 
 $appController = new ApplicationController();
 
-// Fetch actual application data dynamically using the controller
-$userId = $_SESSION['user_id'] ?? null;
-$application = $userId ? $appController->getApplicationByUserId($userId) : null;
+// Applications are owned by the user's NIC in the database and session.
+$nic = $_SESSION['nic'] ?? null;
+$application = $nic ? $appController->getStatus() : null;
 
 $user = [
     'name' => $_SESSION['user_name'] ?? 'User'
@@ -37,7 +37,9 @@ $isRejectedChain = false;
 $inProgressAssigned = false;
 
 // Get statuses from application or default to pending
-$subStatus = $application['submit_status'] ?? 'pending';
+$subStatus = $application['submit_status'] ?? (
+    ($application['application_status'] ?? '') === 'submitted' ? 'success' : 'pending'
+);
 $bStatus = $application['boss_status'] ?? 'pending';
 $fStatus = $application['file_status'] ?? 'pending';
 $cStatus = $application['clerk_status'] ?? 'pending';

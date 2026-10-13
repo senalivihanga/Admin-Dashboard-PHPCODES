@@ -67,7 +67,7 @@ include __DIR__ . '/../layouts/header.php';
             </div>
 
             <!-- Apply Quarter Button -> Redirects to Language Selection Dashboard -->
-            <a href="<?php echo baseUrl('application/select-language?type=joint'); ?>" class="apply-btn block w-full bg-[#701515] hover:bg-[#5a1010] text-white text-center py-3 text-sm font-bold rounded-md transition no-underline">Apply Quarter & Proceed to Language Selection &rarr;</a>
+            <a href="<?php echo baseUrl('application/select-language?type=joint_residence'); ?>" class="apply-btn block w-full bg-[#701515] hover:bg-[#5a1010] text-white text-center py-3 text-sm font-bold rounded-md transition no-underline">Apply Quarter & Proceed to Language Selection &rarr;</a>
         </div>
 
     </div>

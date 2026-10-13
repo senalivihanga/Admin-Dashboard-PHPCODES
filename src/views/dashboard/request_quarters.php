@@ -3,8 +3,11 @@
  * Request Quarters Page
  */
 require_once __DIR__ . '/../../controllers/ApplicationController.php';
+require_once __DIR__ . '/../../models/DropdownModel.php';
 
 $appController = new ApplicationController();
+$dropdownModel = new DropdownModel();
+$quarterTypes = $dropdownModel->getQuarterTypes('en');
 $message = '';
 $success = false;
 
@@ -37,9 +40,11 @@ include __DIR__ . '/../layouts/header.php';
                     <select name="quarter_type" id="quarter_type" required 
                             class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-transparent transition">
                         <option value="">-- Select --</option>
-                        <option value="Type A">Type A (2 Bedroom)</option>
-                        <option value="Type B">Type B (3 Bedroom)</option>
-                        <option value="Type C">Type C (4 Bedroom)</option>
+                        <?php foreach ($quarterTypes as $quarterType): ?>
+                            <option value="<?= htmlspecialchars($quarterType['name'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <?= htmlspecialchars($quarterType['name'], ENT_QUOTES, 'UTF-8'); ?>
+                            </option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 

@@ -16,13 +16,6 @@ $districts = $dropdownModel->getDistricts('si');
 
 include __DIR__ . '/../layouts/header.php';
 ?>
-<?php
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $currentYear = date('Y');
-    $randomNum = rand(1000, 9999);
-    $appNo = "SLR/AOT/{$currentYear}/{$randomNum}";
-}
-?>
 <!DOCTYPE html>
 <html lang="si">
 <head>
@@ -188,7 +181,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <div class="application-container">
 
-        <form id="railway-form" method="POST" action="">
+        <form id="railway-form" method="POST" action="<?php echo baseUrl('application/submit'); ?>" enctype="multipart/form-data">
+            <input type="hidden" name="residence_type" value="<?= htmlspecialchars($_GET['type'] ?? ($_SESSION['residence_type'] ?? 'single'), ENT_QUOTES, 'UTF-8'); ?>">
+            <input type="hidden" name="form_language" value="single_residence">
             
             <!-- ================= PAGE 1 ================= -->
             <div id="page-1" class="page-section">
@@ -235,6 +230,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <label for="house-type">අයදුම් කරන නිවාස වර්ගය :</label>
                             <select id="house-type" name="house_type" class="dropdown-select" onkeydown="handleEnter(event, 'full_name')">
                                 <option value="" disabled selected>-- තෝරන්න --</option>
+                                <?php foreach ($quarterTypes as $quarterType): ?>
+                                    <option value="<?= htmlspecialchars($quarterType['name'], ENT_QUOTES, 'UTF-8'); ?>"><?= htmlspecialchars($quarterType['name'], ENT_QUOTES, 'UTF-8'); ?></option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
                     </div>
@@ -295,6 +293,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <label>IX. තනතුර :</label>
                             <select id="designation" name="designation" class="dropdown-select" onkeydown="handleEnter(event, 'national_id')">
                                 <option value="" disabled selected>-- තෝරන්න --</option>
+                                <?php foreach ($designations as $designationOption): ?>
+                                    <option value="<?= htmlspecialchars($designationOption['name'], ENT_QUOTES, 'UTF-8'); ?>"><?= htmlspecialchars($designationOption['name'], ENT_QUOTES, 'UTF-8'); ?></option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="form-group">
@@ -325,6 +326,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <label>i. උප දෙපාර්තමේන්තුව :</label>
                                 <select name="sub_department" class="dropdown-select inline-select" onkeydown="handleEnter(event, 'salary_account')">
                                     <option value="" disabled selected>-- තෝරන්න --</option>
+                                    <?php foreach ($subDepartments as $department): ?>
+                                        <option value="<?= htmlspecialchars($department['name'], ENT_QUOTES, 'UTF-8'); ?>"><?= htmlspecialchars($department['name'], ENT_QUOTES, 'UTF-8'); ?></option>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
                             <div class="form-group indent">
@@ -400,7 +404,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td><select class="dropdown-select table-select" name="table_v_dept[]"><option value="" disabled selected>-- තෝරන්න --</option></select></td>
+                                    <td><select class="dropdown-select table-select" name="table_v_dept[]"><option value="" disabled selected>-- තෝරන්න --</option><?php foreach ($subDepartments as $department): ?><option value="<?= htmlspecialchars($department['name'], ENT_QUOTES, 'UTF-8'); ?>"><?= htmlspecialchars($department['name'], ENT_QUOTES, 'UTF-8'); ?></option><?php endforeach; ?></select></td>
                                     <td><input type="date" class="form-input-date from-date" name="table_v_from[]" onchange="validateToDate(this)"></td>
                                     <td><input type="date" class="form-input-date to-date" name="table_v_to[]"></td>
                                 </tr>
@@ -428,7 +432,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td><select class="dropdown-select table-select" name="table_vi_dept[]"><option value="" disabled selected>-- තෝරන්න --</option></select></td>
+                                    <td><select class="dropdown-select table-select" name="table_vi_dept[]"><option value="" disabled selected>-- තෝරන්න --</option><?php foreach ($subDepartments as $department): ?><option value="<?= htmlspecialchars($department['name'], ENT_QUOTES, 'UTF-8'); ?>"><?= htmlspecialchars($department['name'], ENT_QUOTES, 'UTF-8'); ?></option><?php endforeach; ?></select></td>
                                     <td><input type="date" class="form-input-date from-date" name="table_vi_from[]" onchange="validateToDate(this)"></td>
                                     <td><input type="date" class="form-input-date to-date" name="table_vi_to[]"></td>
                                 </tr>
@@ -599,11 +603,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <label for="permanent-district" >IV. ස්ථිර පදිංචි දිස්ත්‍රික්කය :</label>
                             <select id="permanent-district" name="permanent_district" class="dropdown-select" onkeydown="handleEnter(event, 'nearest-city-distance')">
                                 <option value="" disabled selected>-- තෝරන්න --</option>
+                                <?php foreach ($districts as $districtOption): ?>
+                                    <option value="<?= htmlspecialchars($districtOption['name'], ENT_QUOTES, 'UTF-8'); ?>"><?= htmlspecialchars($districtOption['name'], ENT_QUOTES, 'UTF-8'); ?></option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="form-group">
                             <label>V. ආසන්නතම ප්‍රධාන නගරය හා ඊට ඇති දුර ප්‍රමාණය :</label>
-                            <input type="number" id="nearest-city-distance" name="nearest_city_distance" class="table-input" min="0" step="1" placeholder="(කි.මී.)" onkeydown="handleEnter(event, 'branch-to-work-distance')">
+                            <input type="text" name="nearest_city_name" class="table-input" placeholder="ආසන්නතම නගරය">
+                            <input type="number" id="nearest-city-distance" name="nearest_city_distance" class="table-input" min="0" step="0.1" placeholder="දුර (කි.මී.)" onkeydown="handleEnter(event, 'branch-to-work-distance')">
                         </div>
                     </div>
 
@@ -969,10 +977,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         function addTableRow(tableId) {
             const table = document.getElementById(tableId).getElementsByTagName('tbody')[0];
             const newRow = table.insertRow();
+            const prefix = tableId === 'table-v-element' ? 'table_v' : 'table_vi';
+            const departments = <?php echo json_encode(array_column($subDepartments, 'name'), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT); ?>;
+            const options = departments.map(name => `<option value="${name}">${name}</option>`).join('');
             newRow.innerHTML = `
-                <td><select class="dropdown-select table-select" name="table_dept[]"><option value="" disabled selected>-- තෝරන්න --</option></select></td>
-                <td><input type="date" class="form-input-date" name="table_from[]"></td>
-                <td><input type="date" class="form-input-date" name="table_to[]"></td>
+                <td><select class="dropdown-select table-select" name="${prefix}_dept[]"><option value="" disabled selected>-- තෝරන්න --</option>${options}</select></td>
+                <td><input type="date" class="form-input-date" name="${prefix}_from[]"></td>
+                <td><input type="date" class="form-input-date" name="${prefix}_to[]"></td>
             `;
         }
 
@@ -1067,15 +1078,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        document.getElementById('railway-form').addEventListener('submit', function(e) {
-    e.preventDefault();
-    const currentYear = new Date().getFullYear();
-    const randomNum = Math.floor(1000 + Math.random() * 9000);
-    const appNo = `SLR/AOT/${currentYear}/${randomNum}`;
-    
-    // ඔබගේ පද්ධතියේ නිවැරදි සම්පූර්ණ මාර්ගය (URL) මෙහි යොදන්න
-    window.location.href = `http://localhost/Quarters_Management_System-master/Quarters_Management_System-master/public/application/success_si.php?appNo=${appNo}`;
-});
     </script>
 </body>
 </html>

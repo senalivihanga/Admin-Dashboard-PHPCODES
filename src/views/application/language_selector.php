@@ -6,9 +6,13 @@ $auth->requireLogin();
 $user = $_SESSION['user_name'] ?? 'User';
 $pageTitle = 'Select Language - Quarter Application';
 include __DIR__ . '/../layouts/header.php';
-
-// Read the 'type' parameter from the URL (e.g., ?type=joint)
-$type = isset($_GET['type']) ? '?type=' . urlencode($_GET['type']) : '';
+require_once __DIR__ . '/../../models/Application.php';
+$appModel = new Application();
+$pref = $appModel->getPreference($_SESSION['nic']);
+$residenceType = $_GET['type'] ?? ($pref['residence_type'] ?? 'single');
+if (!in_array($residenceType, ['single', 'joint_residence'], true)) {
+    $residenceType = 'single';
+}
 ?>
 
 <style>
@@ -90,13 +94,30 @@ $type = isset($_GET['type']) ? '?type=' . urlencode($_GET['type']) : '';
     <div class="dashboard-card">
         <h1 style="color: #0f4c81; font-size: 24px; margin-bottom: 10px;">දුම්රිය නිවාස අයදුම්පත්‍රය</h1>
         <h2 style="font-size: 18px; color: #555; margin-bottom: 30px;">Railway Quarters Application Form</h2>
+
+        <?php if (!empty($_SESSION['preference_error'])): ?>
+            <p role="alert" style="color:#b91c1c;"><?= htmlspecialchars($_SESSION['preference_error'], ENT_QUOTES, 'UTF-8'); ?></p>
+            <?php unset($_SESSION['preference_error']); ?>
+        <?php endif; ?>
+
+        <?php if ($pref && !empty($pref['form_language'])): ?>
+            <div style="margin-bottom:20px; padding:12px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px;">
+                Previously selected: <strong><?= $pref['form_language'] === 'single_residence' ? 'සිංහල' : 'English'; ?></strong>
+            </div>
+        <?php endif; ?>
         
         <p style="margin-bottom: 25px; font-weight: 500;">ඔබගේ භාෂාව තෝරන්න / Please select your language:</p>
         
-        <!-- Sinhala link – appends type parameter if present -->
-        <a href="<?php echo baseUrl('application/form/si' . $type); ?>" class="lang-btn sinhala-btn">සිංහල</a>
-        <!-- English link – appends type parameter if present -->
-        <a href="<?php echo baseUrl('application/form/en' . $type); ?>" class="lang-btn english-btn">English</a>
+        <form action="<?php echo baseUrl('application/save-language'); ?>" method="POST" style="margin:15px 0;">
+            <input type="hidden" name="language" value="single_residence">
+            <input type="hidden" name="residence_type" value="<?= htmlspecialchars($residenceType, ENT_QUOTES, 'UTF-8'); ?>">
+            <button type="submit" class="lang-btn sinhala-btn" style="width:100%; cursor:pointer;">සිංහල</button>
+        </form>
+        <form action="<?php echo baseUrl('application/save-language'); ?>" method="POST" style="margin:15px 0;">
+            <input type="hidden" name="language" value="en">
+            <input type="hidden" name="residence_type" value="<?= htmlspecialchars($residenceType, ENT_QUOTES, 'UTF-8'); ?>">
+            <button type="submit" class="lang-btn english-btn" style="width:100%; cursor:pointer;">English</button>
+        </form>
     </div>
 </div>
 

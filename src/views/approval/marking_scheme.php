@@ -51,6 +51,7 @@ include __DIR__ . '/../layouts/header.php';
 
     <!-- Marking Scheme Form -->
     <form action="<?php echo baseUrl('approval/marks/submit'); ?>" method="POST">
+        <input type="hidden" name="application_id" value="<?php echo (int)($_GET['application_id'] ?? 0); ?>">
         <div class="bg-white border border-slate-300 rounded-lg p-6 shadow-sm mb-6">
     
             <!-- Marking Table -->

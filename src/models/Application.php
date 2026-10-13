@@ -13,11 +13,23 @@ class Application {
      * Create new application
      */
     public function create($nic, $quarterType) {
-        $computerNo = 'EMP' . str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT);
+        $userStmt = $this->conn->prepare("SELECT computer_number FROM users WHERE nic = ? AND is_active = 1");
+        $userStmt->bind_param("s", $nic);
+        $userStmt->execute();
+        $user = $userStmt->get_result()->fetch_assoc();
+        $userStmt->close();
+
+        if (!$user || empty($user['computer_number'])) {
+            return ['success' => false, 'error' => 'A registered computer number is required.'];
+        }
+
+        $computerNo = $user['computer_number'];
         $applicationDate = date('Y-m-d');
         
-        $sql = "INSERT INTO {$this->table} (nic, computer_no, quarter_type, application_date, status) 
-                VALUES (?, ?, ?, ?, 'pending')";
+        $sql = "INSERT INTO {$this->table} (
+                nic, computer_no, quarter_type, application_date, status,
+                application_status, submit_status, application_submitted_at
+            ) VALUES (?, ?, ?, ?, 'pending', 'submitted', 'success', NOW())";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param("ssss", $nic, $computerNo, $quarterType, $applicationDate);
         
@@ -77,29 +89,81 @@ class Application {
         }
         
         // Get waiting list position
-        $pos_sql = "SELECT (SELECT COUNT(*) 
-                     FROM waiting_list a2 
-                     WHERE (a2.applied_date < a1.applied_date) 
-                        OR (a2.applied_date = a1.applied_date AND a2.employee_marks > a1.employee_marks)
-                        OR (a2.applied_date = a1.applied_date AND a2.employee_marks = a1.employee_marks AND a2.id <= a1.id)
-                     ) AS calculated_position
-                     FROM waiting_list a1 
-                     WHERE a1.nic = ?";
+          $pos_sql = "SELECT position FROM waiting_list WHERE nic = ? AND quarter_type = ? ORDER BY id DESC LIMIT 1";
         
         $pos_stmt = $this->conn->prepare($pos_sql);
-        $pos_stmt->bind_param("s", $nic);
+          $pos_stmt->bind_param("ss", $nic, $application['quarter_type']);
         $pos_stmt->execute();
         $pos_result = $pos_stmt->get_result();
         $position = null;
         
         if ($pos_row = $pos_result->fetch_assoc()) {
-            $position = $pos_row['calculated_position'];
+            $position = $pos_row['position'];
         }
         
         $application['position'] = $position;
         return $application;
     }
-    
+    /** Save or update the current user's latest draft preference. */
+    public function savePreference($nic, $residenceType, $formLanguage = null) {
+        $stmt = $this->conn->prepare(
+            "SELECT id FROM {$this->table} WHERE nic = ? AND application_status = 'draft' ORDER BY id DESC LIMIT 1"
+        );
+        $stmt->bind_param("s", $nic);
+        $stmt->execute();
+        $existing = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if ($existing) {
+            if ($formLanguage !== null) {
+                $sql = "UPDATE {$this->table} SET residence_type = ?, form_language = ? WHERE id = ?";
+                $stmt = $this->conn->prepare($sql);
+                $stmt->bind_param("ssi", $residenceType, $formLanguage, $existing['id']);
+            } else {
+                $sql = "UPDATE {$this->table} SET residence_type = ? WHERE id = ?";
+                $stmt = $this->conn->prepare($sql);
+                $stmt->bind_param("si", $residenceType, $existing['id']);
+            }
+            $stmt->execute();
+            $stmt->close();
+            return $existing['id'];
+        }
+
+        $computerNo = '';
+        $userStmt = $this->conn->prepare(
+            "SELECT computer_number FROM users WHERE nic = ? AND is_active = 1"
+        );
+        $userStmt->bind_param("s", $nic);
+        $userStmt->execute();
+        $userRow = $userStmt->get_result()->fetch_assoc();
+        $userStmt->close();
+        if ($userRow && !empty($userRow['computer_number'])) {
+            $computerNo = $userRow['computer_number'];
+        }
+
+        $sql = "INSERT INTO {$this->table} (
+                    nic, computer_no, quarter_type, application_date,
+                    residence_type, form_language, application_status, status, submit_status
+                ) VALUES (?, ?, '', CURDATE(), ?, ?, 'draft', 'pending', 'pending')";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->bind_param("ssss", $nic, $computerNo, $residenceType, $formLanguage);
+        $stmt->execute();
+        $newId = $stmt->insert_id;
+        $stmt->close();
+        return $newId;
+    }
+
+    /** Return the latest draft preference for a user, if one exists. */
+    public function getPreference($nic) {
+        $sql = "SELECT id, residence_type, form_language FROM {$this->table}
+                WHERE nic = ? AND application_status = 'draft' ORDER BY id DESC LIMIT 1";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->bind_param("s", $nic);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $row ?: null;
+    }
     public function __destruct() {
         if ($this->conn) {
             $this->conn->close();

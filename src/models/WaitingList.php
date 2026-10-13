@@ -13,7 +13,7 @@ class WaitingList {
      * Add applicant to waiting list
      */
     public function add($nic, $quarterType, $position) {
-        $sql = "INSERT INTO {$this->table} (nic, position, quarter_type) VALUES (?, ?, ?)";
+        $sql = "INSERT INTO {$this->table} (nic, position, quarter_type, applied_date) VALUES (?, ?, ?, CURDATE())";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param("sis", $nic, $position, $quarterType);
         return $stmt->execute();
@@ -22,14 +22,31 @@ class WaitingList {
     /**
      * Get position for applicant
      */
-    public function getPosition($nic) {
-        $sql = "SELECT position FROM {$this->table} WHERE nic = ?";
-        $stmt = $this->conn->prepare($sql);
-        $stmt->bind_param("s", $nic);
+    public function getPosition($nic, $quarterType = null) {
+        if ($quarterType !== null) {
+            $sql = "SELECT position FROM {$this->table} WHERE nic = ? AND quarter_type = ? ORDER BY id DESC LIMIT 1";
+            $stmt = $this->conn->prepare($sql);
+            $stmt->bind_param("ss", $nic, $quarterType);
+        } else {
+            $sql = "SELECT position FROM {$this->table} WHERE nic = ? ORDER BY id DESC LIMIT 1";
+            $stmt = $this->conn->prepare($sql);
+            $stmt->bind_param("s", $nic);
+        }
         $stmt->execute();
         $result = $stmt->get_result();
         $row = $result->fetch_assoc();
         return $row ? $row['position'] : null;
+    }
+
+    public function getLatestForNic($nic) {
+        $sql = "SELECT position, quarter_type, applied_date, designation_score, employee_marks
+                FROM {$this->table} WHERE nic = ? ORDER BY id DESC LIMIT 1";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->bind_param("s", $nic);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $row;
     }
     
     /**
@@ -43,9 +60,9 @@ class WaitingList {
                     a1.employee_marks,
                     (SELECT COUNT(*) 
                      FROM waiting_list a2 
-                     WHERE (a2.applied_date < a1.applied_date) 
-                        OR (a2.applied_date = a1.applied_date AND a2.employee_marks > a1.employee_marks)
-                        OR (a2.applied_date = a1.applied_date AND a2.employee_marks = a1.employee_marks AND a2.id <= a1.id)
+                             WHERE a2.quarter_type = a1.quarter_type AND ((a2.applied_date < a1.applied_date)
+                                OR (a2.applied_date = a1.applied_date AND a2.employee_marks > a1.employee_marks)
+                                OR (a2.applied_date = a1.applied_date AND a2.employee_marks = a1.employee_marks AND a2.id <= a1.id))
                     ) AS position
                 FROM waiting_list a1 
                 ORDER BY position ASC";

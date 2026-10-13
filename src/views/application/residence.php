@@ -6,7 +6,13 @@ $auth->requireLogin();
 $user = $_SESSION['user_name'] ?? 'User';
 $pageTitle = 'Residence Selection - Railway Quarters';
 include __DIR__ . '/../layouts/header.php';
+require_once __DIR__ . '/../../models/Application.php';
+$appModel = new Application();
+$pref = $appModel->getPreference($_SESSION['nic']);
 ?>
+
+
+
 
 <style>
     /* Box-sizing පමණක් සියල්ලට දෙන්න, font-family එක header එකට බලපෑමක් නොවන පරිදි .main-container එකට පමණක් සීමා කරන්න */
@@ -141,6 +147,30 @@ include __DIR__ . '/../layouts/header.php';
         <h2>Railway Quarters Residence Selection Dashboard</h2>
         <p>Please select the category of residence configuration below to proceed with the relevant forms and management tools:</p>
 
+        <?php if (!empty($_SESSION['preference_error'])): ?>
+            <p role="alert" style="color:#b91c1c; margin-bottom:16px;"><?= htmlspecialchars($_SESSION['preference_error'], ENT_QUOTES, 'UTF-8'); ?></p>
+            <?php unset($_SESSION['preference_error']); ?>
+        <?php endif; ?>
+
+        <?php if ($pref && !empty($pref['residence_type'])): ?>
+            <div style="margin-bottom:20px; padding:14px; background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px;">
+                <p style="font-size:14px; color:#0369a1; margin-bottom:10px;">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                    Saved preference: <strong><?= $pref['residence_type'] === 'joint_residence' ? 'Joint Residence' : 'Single Residence'; ?></strong>
+                    <?php if (!empty($pref['form_language'])): ?>
+                        (<?= $pref['form_language'] === 'single_residence' ? 'Sinhala' : 'English'; ?>)
+                    <?php endif; ?>
+                </p>
+                <?php if (!empty($pref['form_language'])): ?>
+                    <a href="<?= htmlspecialchars(baseUrl('application/form/' . ($pref['form_language'] === 'single_residence' ? 'si' : 'en') . '?type=' . urlencode($pref['residence_type'])), ENT_QUOTES, 'UTF-8'); ?>" class="action-btn">Continue Saved Application &rarr;</a>
+                <?php elseif ($pref['residence_type'] === 'single'): ?>
+                    <a href="<?= htmlspecialchars(baseUrl('application/select-language?type=single'), ENT_QUOTES, 'UTF-8'); ?>" class="action-btn">Choose Language &rarr;</a>
+                <?php else: ?>
+                    <a href="<?= htmlspecialchars(baseUrl('application/apply.php?tab=joint'), ENT_QUOTES, 'UTF-8'); ?>" class="action-btn">Continue Joint Residence &rarr;</a>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+
         <!-- Tabs Navigation -->
         <div class="tabs-container">
             <button onclick="switchTab('joint')" id="btn-joint" class="tab-btn active">Joint Residence</button>
@@ -153,14 +183,20 @@ include __DIR__ . '/../layouts/header.php';
             <div id="content-joint" class="tab-content active">
                 <h3>Joint Residence Management</h3>
                 <p>Managing and processing applications for another resident to stay or co-occupy the quarters with the consent of the primary resident.</p>
-                <a href="<?php echo baseUrl('application/apply.php?tab=joint'); ?>" class="action-btn maroon">Open Joint Residence &rarr;</a>
+                <form action="<?php echo baseUrl('application/save-residence'); ?>" method="POST" style="display:inline;">
+                    <input type="hidden" name="residence_type" value="joint_residence">
+                    <button type="submit" class="action-btn maroon">Open Joint Residence &rarr;</button>
+                </form>
             </div>
 
             <!-- Single Residence Content -->
             <div id="content-single" class="tab-content">
                 <h3>Single Residence Allocation</h3>
                 <p>Allocation of a separate quarter exclusively for a single family only, along with managing applications and related information.</p>
-                <a href="<?php echo baseUrl('application/select-language?type=single'); ?>" class="action-btn maroon">Open Application Form &rarr;</a>
+                <form action="<?php echo baseUrl('application/save-residence'); ?>" method="POST" style="display:inline;">
+                    <input type="hidden" name="residence_type" value="single">
+                    <button type="submit" class="action-btn maroon">Open Application Form &rarr;</button>
+                </form>
             </div>
         </div>
     </div>

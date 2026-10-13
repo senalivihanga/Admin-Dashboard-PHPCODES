@@ -32,6 +32,7 @@ include __DIR__ . '/../layouts/header.php';
 
     <!-- Form – action points to the backend submit endpoint -->
     <form action="<?php echo baseUrl('approval/deputy/submit'); ?>" method="POST">
+        <input type="hidden" name="application_id" value="<?php echo (int)($_GET['application_id'] ?? 0); ?>">
         <fieldset class="bg-white border border-gray-300 rounded-lg p-6 shadow-sm mb-6">
             <legend class="text-sm font-bold text-[#0f4c81] px-3 py-1 bg-gray-100 border border-gray-200 rounded-md">
                 Deputy Superintendent (Transportation) Colombo

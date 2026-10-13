@@ -28,7 +28,7 @@ class ApplicationController {
         
         if ($result['success']) {
             // Add to waiting list
-            $position = $this->getNextWaitingListPosition();
+            $position = $this->getNextWaitingListPosition($quarterType);
             $this->waitingListModel->add($nic, $quarterType, $position);
             
             // Create notification
@@ -64,7 +64,7 @@ class ApplicationController {
         }
         
         if ($application) {
-            $position = $this->waitingListModel->getPosition($nic);
+            $position = $this->waitingListModel->getPosition($nic, $application['quarter_type']);
             $application['position'] = $position;
             return $application;
         }
@@ -75,11 +75,13 @@ class ApplicationController {
     /**
      * Get next waiting list position
      */
-    private function getNextWaitingListPosition() {
-        $sql = "SELECT COUNT(*) as count FROM waiting_list";
+    private function getNextWaitingListPosition($quarterType) {
         $conn = getDBConnection();
-        $result = $conn->query($sql);
-        $row = $result->fetch_assoc();
+        $stmt = $conn->prepare("SELECT COUNT(*) AS count FROM waiting_list WHERE quarter_type = ?");
+        $stmt->bind_param("s", $quarterType);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
         $conn->close();
         return ($row['count'] ?? 0) + 1;
     }
@@ -90,12 +92,105 @@ class ApplicationController {
     public function submitFullApplication() {
         $this->auth->requireLogin();
         $nic = $_SESSION['nic'];
+        $formLanguage = $_POST['form_language'] ?? 'en';
+        $formPath = $formLanguage === 'single_residence' ? '/application/form/si' : '/application/form/en';
+
+        $fieldAliases = [
+            'full_name' => 'name',
+            'national_id' => 'nic',
+            'house_type' => 'quarter_type',
+            'initials' => 'applicant_initials',
+            'current_post' => 'applicant_current_work_station',
+            'service_no' => 'applicant_service_number',
+            'computer_no' => 'computer_number',
+            'salary_slip_no' => 'applicant_salary_sheet_number',
+            'dob' => 'applicant_date_of_birth',
+            'phone_no' => 'mobile',
+            'private_address' => 'applicant_private_address',
+            'residential_address' => 'applicant_official_address',
+            'civil_status' => 'applicant_civil_status',
+            'designation' => 'applicant_designation',
+            'sub_department' => 'applicant_current_sub_department',
+            'salary_account' => 'applicant_salary_account_branch',
+            'official_letter_office' => 'applicant_personal_file_office',
+            'is_permanent' => 'is_applicant_service_confirmed',
+            'confirmed_date' => 'applicant_service_confirmed_date',
+            'gov_date' => 'applicant_gov_first_appointment_date',
+            'railway_date' => 'applicant_railway_first_appointment_date',
+            'subdept_date' => 'applicant_current_sub_dept_duty_date',
+            'current_post_date' => 'applicant_current_post_appointment_date',
+            'other_subdept' => 'has_applicant_served_other_sub_dept',
+            'service_breaks' => 'has_applicant_service_breaks',
+            'has_children' => 'does_applicant_have_children_residing',
+            'has_spouse' => 'does_applicant_have_spouse_residing',
+            'spouse_gov_job' => 'is_applicant_spouse_gov_employee',
+            'is_rented_house' => 'is_applicant_currently_renting',
+            'has_disability' => 'does_applicant_have_disability',
+            'rejected_quarters' => 'has_applicant_rejected_quarter_before',
+            'applied_before' => 'has_applicant_applied_before',
+            'location' => 'applied_quarter_location',
+            'house_no' => 'applied_quarter_number',
+            'spouse_name' => 'spouse_full_name',
+            'spouse_moving' => 'spouse_will_reside_in_quarters',
+            'spouse_position' => 'spouse_designation',
+            'spouse_institution' => 'spouse_institution_head_and_address',
+            'spouse_current_post' => 'spouse_work_station_and_address',
+            'permanent_address_sec6' => 'permanent_residence_address',
+            'owner_is_self' => 'is_applicant_owner_of_residence',
+            'owner_relationship' => 'owner_relationship_if_not_self',
+            'commute_from_home' => 'does_applicant_commute_from_residence',
+            'permanent_district' => 'permanent_residence_district',
+            'nearest_city_name' => 'nearest_major_city_name',
+            'nearest_city_distance' => 'distance_to_nearest_city_km',
+            'branch_to_work_distance' => 'distance_from_branch_post_to_work_km',
+            'house_owner' => 'rented_house_owner_name',
+            'house_location' => 'rented_house_location',
+            'rented_address' => 'rented_house_address',
+            'rent_date' => 'rented_house_occupancy_date',
+            'monthly_rent' => 'rented_house_monthly_rent',
+            'disability_details' => 'disability_or_illness_details',
+            'quarter_number' => 'previous_quarter_number',
+            'moved_out_date' => 'previous_quarter_vacated_date',
+            'reason_for_moving_out' => 'previous_quarter_vacate_reason',
+            'applied_date_prev' => 'previous_application_date',
+            'prev_house_type' => 'previous_applied_quarter_type',
+            'prev_house_location' => 'previous_applied_quarter_location',
+            'declaration_month' => 'declaration_salary_month',
+            'declaration_year' => 'declaration_salary_year',
+            'page3_date' => 'declaration_date',
+            'child_full_name' => 'child_name',
+            'child_dob' => 'child_date_of_birth'
+        ];
+        foreach ($fieldAliases as $field => $alias) {
+            if (!isset($_POST[$field]) && isset($_POST[$alias])) {
+                $_POST[$field] = $_POST[$alias];
+            }
+        }
+        array_walk_recursive($_POST, static function (&$value) {
+            if ($value === '') {
+                $value = null;
+            }
+        });
+        if (empty($_FILES['medical_cert']) && !empty($_FILES['medical_certificate_file_path'])) {
+            $_FILES['medical_cert'] = $_FILES['medical_certificate_file_path'];
+        }
+        if (empty($_FILES['salary_cert']) && !empty($_FILES['salary_certificate_file_path'])) {
+            $_FILES['salary_cert'] = $_FILES['salary_certificate_file_path'];
+        }
+        if (in_array($_POST['civil_status'] ?? '', ['විවාහක', 'අවිවාහක', 'දික්කසාදිත', 'වැන්දඹු'], true)) {
+            $_POST['civil_status'] = [
+                'විවාහක' => 'Married',
+                'අවිවාහක' => 'Unmarried',
+                'දික්කසාදිත' => 'Divorced',
+                'වැන්දඹු' => 'Widowed'
+            ][$_POST['civil_status']];
+        }
 
         $required = ['full_name', 'national_id', 'designation', 'house_type'];
         foreach ($required as $field) {
             if (empty($_POST[$field])) {
                 $_SESSION['form_error'] = "Please fill in all required fields.";
-                redirect('/application/form/en');
+                redirect($formPath);
                 return;
             }
         }
@@ -103,8 +198,16 @@ class ApplicationController {
         // The NIC typed on the form must match the logged-in applicant's NIC.
         if (trim($_POST['national_id']) !== trim($nic)) {
             $_SESSION['form_error'] = "The NIC entered does not match your account. Please correct it.";
-            redirect('/application/form/en');
+            redirect($formPath);
             return;
+        }
+        if (!in_array($formLanguage, ['en', 'single_residence'], true)) {
+            $formLanguage = 'en';
+            $formPath = '/application/form/en';
+        }
+        $residenceType = $_POST['residence_type'] ?? ($_SESSION['residence_type'] ?? 'single');
+        if (!in_array($residenceType, ['single', 'joint_residence'], true)) {
+            $residenceType = 'single';
         }
         $conn = getDBConnection();
         $conn->begin_transaction();
@@ -115,7 +218,7 @@ class ApplicationController {
             $initials = $_POST['initials'] ?? null;
             $current_post = $_POST['current_post'] ?? null;
             $service_no = $_POST['service_no'] ?? null;
-            $computer_no = $_POST['computer_no'] ?? null;
+            $computer_no = $_POST['computer_no'] ?? $_SESSION['computer_number'] ?? null;
             $salary_slip_no = $_POST['salary_slip_no'] ?? null;
             $dob = $_POST['dob'] ?? null;
             $phone_no = $_POST['phone_no'] ?? null;
@@ -189,11 +292,22 @@ class ApplicationController {
             $stmt->execute();
             $stmt->close();
 
-            // 2. Insert into applications
+            // 2. Promote this user's saved draft, or create a submitted row if needed.
             $quarterType = $_POST['house_type'] ?? '';
             $quarterNumber = $_POST['house_no'] ?? null;
             $quarterLocation = $_POST['location'] ?? null;
-            $computer_no_val = $_POST['computer_no'] ?? null;
+            $computer_no_val = trim((string)($_POST['computer_no'] ?? $_SESSION['computer_number'] ?? ''));
+            if ($computer_no_val === '') {
+                $computerStmt = $conn->prepare("SELECT computer_number FROM users WHERE nic = ?");
+                $computerStmt->bind_param("s", $nic);
+                $computerStmt->execute();
+                $computerRow = $computerStmt->get_result()->fetch_assoc();
+                $computerStmt->close();
+                $computer_no_val = $computerRow['computer_number'] ?? '';
+            }
+            if ($computer_no_val === '') {
+                throw new RuntimeException('Your account does not have a computer number. Update your profile before applying.');
+            }
 
             $hasOtherSub = isset($_POST['other_subdept']) && $_POST['other_subdept'] === 'yes' ? 1 : 0;
             $hasBreaks = isset($_POST['service_breaks']) && $_POST['service_breaks'] === 'yes' ? 1 : 0;
@@ -205,55 +319,106 @@ class ApplicationController {
             $rejectedBefore = isset($_POST['rejected_quarters']) && $_POST['rejected_quarters'] === 'yes' ? 1 : 0;
             $appliedBefore = isset($_POST['applied_before']) && $_POST['applied_before'] === 'yes' ? 1 : 0;
 
-            $appSQL = "
-                INSERT INTO applications (
-                    nic, computer_no, quarter_type, application_date,
-                    applied_quarter_number, applied_quarter_location,
-                    has_applicant_served_other_sub_dept,
-                    has_applicant_service_breaks,
-                    does_applicant_have_children_residing,
-                    does_applicant_have_spouse_residing,
-                    is_applicant_spouse_gov_employee,
-                    is_applicant_currently_renting,
-                    does_applicant_have_disability,
-                    has_applicant_rejected_quarter_before,
-                    has_applicant_applied_before,
-                    application_status
-                ) VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted')
-            ";
-            $stmt = $conn->prepare($appSQL);
-            // 14 placeholders: 5 strings + 9 integers
-            $stmt->bind_param(
-                "sssssiiiiiiiii", // 5 's' + 9 'i' = 14
-                $nic,
-                $computer_no_val,
-                $quarterType,
-                $quarterNumber,
-                $quarterLocation,
-                $hasOtherSub,
-                $hasBreaks,
-                $hasChildren,
-                $hasSpouse,
-                $spouseGov,
-                $isRenting,
-                $hasDisability,
-                $rejectedBefore,
-                $appliedBefore
+            $draftStmt = $conn->prepare(
+                "SELECT id FROM applications WHERE nic = ? AND application_status = 'draft' ORDER BY id DESC LIMIT 1"
             );
-            $stmt->execute();
-            $applicationId = $stmt->insert_id;
-            $stmt->close();
+            $draftStmt->bind_param("s", $nic);
+            $draftStmt->execute();
+            $draftRow = $draftStmt->get_result()->fetch_assoc();
+            $draftStmt->close();
+
+            if ($draftRow) {
+                $applicationId = (int)$draftRow['id'];
+                $appSQL = "
+                    UPDATE applications SET
+                        computer_no = ?, quarter_type = ?, application_date = CURDATE(),
+                        applied_quarter_number = ?, applied_quarter_location = ?,
+                        has_applicant_served_other_sub_dept = ?, has_applicant_service_breaks = ?,
+                        does_applicant_have_children_residing = ?, does_applicant_have_spouse_residing = ?,
+                        is_applicant_spouse_gov_employee = ?, is_applicant_currently_renting = ?,
+                        does_applicant_have_disability = ?, has_applicant_rejected_quarter_before = ?,
+                        has_applicant_applied_before = ?, application_status = 'submitted',
+                        submit_status = 'success', status = 'pending', application_submitted_at = NOW()
+                    WHERE id = ? AND nic = ? AND application_status = 'draft'
+                ";
+                $stmt = $conn->prepare($appSQL);
+                $stmt->bind_param(
+                    "ssssiiiiiiiiiis",
+                    $computer_no_val,
+                    $quarterType,
+                    $quarterNumber,
+                    $quarterLocation,
+                    $hasOtherSub,
+                    $hasBreaks,
+                    $hasChildren,
+                    $hasSpouse,
+                    $spouseGov,
+                    $isRenting,
+                    $hasDisability,
+                    $rejectedBefore,
+                    $appliedBefore,
+                    $applicationId,
+                    $nic
+                );
+                $stmt->execute();
+                $stmt->close();
+            } else {
+                $appSQL = "
+                    INSERT INTO applications (
+                        nic, computer_no, quarter_type, application_date,
+                        applied_quarter_number, applied_quarter_location,
+                        has_applicant_served_other_sub_dept, has_applicant_service_breaks,
+                        does_applicant_have_children_residing, does_applicant_have_spouse_residing,
+                        is_applicant_spouse_gov_employee, is_applicant_currently_renting,
+                        does_applicant_have_disability, has_applicant_rejected_quarter_before,
+                        has_applicant_applied_before, residence_type, form_language,
+                        application_status, submit_status, status, application_submitted_at
+                    ) VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted', 'success', 'pending', NOW())
+                ";
+                $stmt = $conn->prepare($appSQL);
+                $stmt->bind_param(
+                    "sssssiiiiiiiiiss",
+                    $nic,
+                    $computer_no_val,
+                    $quarterType,
+                    $quarterNumber,
+                    $quarterLocation,
+                    $hasOtherSub,
+                    $hasBreaks,
+                    $hasChildren,
+                    $hasSpouse,
+                    $spouseGov,
+                    $isRenting,
+                    $hasDisability,
+                    $rejectedBefore,
+                    $appliedBefore,
+                    $residenceType,
+                    $formLanguage
+                );
+                $stmt->execute();
+                $applicationId = $stmt->insert_id;
+                $stmt->close();
+            }
+
+            $receivedDate = $_POST['office_received_date'] ?? null;
+            $receivedStmt = $conn->prepare("UPDATE applications SET application_date_received = ? WHERE id = ?");
+            $receivedStmt->bind_param("si", $receivedDate, $applicationId);
+            $receivedStmt->execute();
+            $receivedStmt->close();
 
             // 3. Other sub‑departments served
-            if ($hasOtherSub && isset($_POST['other_sub_dept_name'])) {
-                $names = $_POST['other_sub_dept_name'];
-                $froms = $_POST['other_sub_dept_from'];
-                $tos = $_POST['other_sub_dept_to'];
+            if ($hasOtherSub) {
+                $names = $_POST['other_sub_dept_name'] ?? $_POST['table_v_dept'] ?? [];
+                $froms = $_POST['other_sub_dept_from'] ?? $_POST['table_v_from'] ?? [];
+                $tos = $_POST['other_sub_dept_to'] ?? $_POST['table_v_to'] ?? [];
                 $sql = "INSERT INTO other_sub_departments_served (application_id, sub_department_name, service_from_date, service_to_date) VALUES (?, ?, ?, ?)";
                 $stmt = $conn->prepare($sql);
                 for ($i = 0; $i < count($names); $i++) {
-                    if (!empty($names[$i])) {
-                        $stmt->bind_param("isss", $applicationId, $names[$i], $froms[$i], $tos[$i]);
+                    $departmentName = trim((string)($names[$i] ?? ''));
+                    $serviceFrom = $froms[$i] ?? '';
+                    $serviceTo = $tos[$i] ?? '';
+                    if ($departmentName !== '' && $serviceFrom !== '' && $serviceTo !== '') {
+                        $stmt->bind_param("isss", $applicationId, $departmentName, $serviceFrom, $serviceTo);
                         $stmt->execute();
                     }
                 }
@@ -261,15 +426,18 @@ class ApplicationController {
             }
 
             // 4. Service breaks
-            if ($hasBreaks && isset($_POST['break_sub_dept'])) {
-                $names = $_POST['break_sub_dept'];
-                $froms = $_POST['break_from'];
-                $tos = $_POST['break_to'];
+            if ($hasBreaks) {
+                $names = $_POST['break_sub_dept'] ?? $_POST['table_vi_dept'] ?? [];
+                $froms = $_POST['break_from'] ?? $_POST['table_vi_from'] ?? [];
+                $tos = $_POST['break_to'] ?? $_POST['table_vi_to'] ?? [];
                 $sql = "INSERT INTO service_breaks (application_id, break_sub_department, break_from_date, break_to_date) VALUES (?, ?, ?, ?)";
                 $stmt = $conn->prepare($sql);
                 for ($i = 0; $i < count($names); $i++) {
-                    if (!empty($names[$i])) {
-                        $stmt->bind_param("isss", $applicationId, $names[$i], $froms[$i], $tos[$i]);
+                    $departmentName = trim((string)($names[$i] ?? ''));
+                    $breakFrom = $froms[$i] ?? '';
+                    $breakTo = $tos[$i] ?? '';
+                    if ($departmentName !== '' && $breakFrom !== '' && $breakTo !== '') {
+                        $stmt->bind_param("isss", $applicationId, $departmentName, $breakFrom, $breakTo);
                         $stmt->execute();
                     }
                 }
@@ -277,16 +445,20 @@ class ApplicationController {
             }
 
             // 5. Children details
-            if ($hasChildren && isset($_POST['child_full_name'])) {
-                $names = $_POST['child_full_name'];
-                $genders = $_POST['child_gender'];
-                $dobs = $_POST['child_dob'];
-                $statuses = $_POST['child_civil_status'];
+            if ($hasChildren) {
+                $names = $_POST['child_full_name'] ?? $_POST['child_name'] ?? [];
+                $genders = $_POST['child_gender'] ?? [];
+                $dobs = $_POST['child_dob'] ?? [];
+                $statuses = $_POST['child_civil_status'] ?? [];
                 $sql = "INSERT INTO children_details (application_id, child_full_name, child_gender, child_date_of_birth, child_civil_status) VALUES (?, ?, ?, ?, ?)";
                 $stmt = $conn->prepare($sql);
                 for ($i = 0; $i < count($names); $i++) {
-                    if (!empty($names[$i])) {
-                        $stmt->bind_param("issss", $applicationId, $names[$i], $genders[$i], $dobs[$i], $statuses[$i]);
+                    $childName = trim((string)($names[$i] ?? ''));
+                    $childGender = $genders[$i] ?? '';
+                    $childDob = $dobs[$i] ?? '';
+                    $childStatus = $statuses[$i] ?? '';
+                    if ($childName !== '' && in_array($childGender, ['female', 'male'], true) && $childDob !== '' && in_array($childStatus, ['married', 'unmarried', 'divorced', 'widowed'], true)) {
+                        $stmt->bind_param("issss", $applicationId, $childName, $childGender, $childDob, $childStatus);
                         $stmt->execute();
                     }
                 }
@@ -302,10 +474,14 @@ class ApplicationController {
                     spouse_work_station_and_address, spouse_annual_salary
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmt = $conn->prepare($spouseSql);
-                $spouseName = $_POST['spouse_name'] ?? null;
-                $spouseNic = $_POST['spouse_national_id'] ?? null;
+                $spouseName = trim((string)($_POST['spouse_name'] ?? ''));
+                $spouseNic = trim((string)($_POST['spouse_national_id'] ?? ''));
+                if ($spouseName === '' || $spouseNic === '') {
+                    throw new RuntimeException('Enter the spouse name and NIC, or select that no spouse will reside in the quarter.');
+                }
                 $spouseOcc = $_POST['spouse_occupation'] ?? null;
-                $spouseReside = $_POST['spouse_moving'] ?? null;
+                $spouseResideInput = $_POST['spouse_moving'] ?? '';
+                $spouseReside = in_array($spouseResideInput, ['Will come', 'පැමිණේ'], true) ? 'Will Come' : (in_array($spouseResideInput, ['Will not come', 'පැමිණෙන්නේ නැත'], true) ? 'Will Not Come' : null);
                 $spouseDept = $_POST['spouse_department'] ?? null;
                 $spouseServNo = $_POST['spouse_service_number'] ?? null;
                 $spouseDesig = $_POST['spouse_position'] ?? null;
@@ -329,21 +505,40 @@ class ApplicationController {
                 distance_to_nearest_city_km, distance_from_branch_post_to_work_km
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
             $stmt = $conn->prepare($permSql);
-            $permAddress = $_POST['perm_res_address'] ?? null;
+            $permAddress = trim((string)($_POST['permanent_address_sec6'] ?? $_POST['permanent_address'] ?? ''));
+            if ($permAddress === '') {
+                throw new RuntimeException('Enter your permanent residence address.');
+            }
             $isOwner = isset($_POST['owner_is_self']) && $_POST['owner_is_self'] === 'yes' ? 1 : 0;
             $ownerRel = $_POST['owner_relationship'] ?? null;
             $commute = isset($_POST['commute_from_home']) && $_POST['commute_from_home'] === 'yes' ? 1 : 0;
             $district = $_POST['permanent_district'] ?? null;
-            $nearestCity = $_POST['nearest_city_name'] ?? null;
-            $distanceCity = $_POST['nearest_city_distance'] ?? null;
-            $distanceBranch = $_POST['branch_to_work_distance'] ?? null;
+            $nearestCity = trim((string)($_POST['nearest_city_name'] ?? '')) ?: null;
+            $distanceCity = ($_POST['nearest_city_distance'] ?? '') !== '' ? (float)$_POST['nearest_city_distance'] : null;
+            $distanceBranch = ($_POST['branch_to_work_distance'] ?? '') !== '' ? (float)$_POST['branch_to_work_distance'] : null;
             $stmt->bind_param(
-                "isississd",
+                "isisissdd",
                 $applicationId, $permAddress, $isOwner, $ownerRel, $commute,
                 $district, $nearestCity, $distanceCity, $distanceBranch
             );
             $stmt->execute();
             $stmt->close();
+
+            $positionStmt = $conn->prepare("SELECT COUNT(*) + 1 AS next_position FROM waiting_list WHERE quarter_type = ?");
+            $positionStmt->bind_param("s", $quarterType);
+            $positionStmt->execute();
+            $waitingListNo = (int)$positionStmt->get_result()->fetch_assoc()['next_position'];
+            $positionStmt->close();
+
+            $waitingStmt = $conn->prepare("INSERT INTO waiting_list (nic, position, quarter_type, applied_date) VALUES (?, ?, ?, CURDATE())");
+            $waitingStmt->bind_param("sis", $nic, $waitingListNo, $quarterType);
+            $waitingStmt->execute();
+            $waitingStmt->close();
+
+            $applicationListStmt = $conn->prepare("UPDATE applications SET waiting_list_no = ? WHERE id = ?");
+            $applicationListStmt->bind_param("ii", $waitingListNo, $applicationId);
+            $applicationListStmt->execute();
+            $applicationListStmt->close();
 
             // 8. Rented house details
             if ($isRenting) {
@@ -405,12 +600,19 @@ class ApplicationController {
                 salary_certificate_file_path, declaration_date
             ) VALUES (?, ?, ?, ?, ?)";
             $stmt = $conn->prepare($decSql);
-            $month = $_POST['declaration_month'] ?? null;
-            $year = $_POST['declaration_year'] ?? null;
-            $declDate = $_POST['page3_date'] ?? null;
+            $month = $_POST['declaration_month'] ?? date('F');
+            $year = (int)($_POST['declaration_year'] ?? date('Y'));
+            $declDate = $_POST['page3_date'] ?? date('Y-m-d');
             $stmt->bind_param("isiss", $applicationId, $month, $year, $salaryPath, $declDate);
             $stmt->execute();
             $stmt->close();
+
+            $notificationTitle = 'Application Received';
+            $notificationMessage = 'Your quarter application has been received and is under review.';
+            $notificationStmt = $conn->prepare("INSERT INTO notifications (nic, title, message, is_read) VALUES (?, ?, ?, 0)");
+            $notificationStmt->bind_param("sss", $nic, $notificationTitle, $notificationMessage);
+            $notificationStmt->execute();
+            $notificationStmt->close();
 
             // Commit transaction
             $conn->commit();
@@ -420,7 +622,7 @@ class ApplicationController {
         } catch (Exception $e) {
             $conn->rollback();
             $_SESSION['form_error'] = "Error submitting application: " . $e->getMessage();
-            redirect('/application/form/en');
+            redirect($formPath);
         }
         $conn->close();
     }
