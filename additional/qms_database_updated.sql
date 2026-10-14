@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 12, 2026 at 11:53 AM
+-- Generation Time: Oct 13, 2026 at 08:36 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -87,14 +87,15 @@ CREATE TABLE IF NOT EXISTS `applications` (
   KEY `idx_applications_nic` (`nic`),
   KEY `idx_applications_status` (`application_status`),
   KEY `idx_applications_quarter_type` (`quarter_type`)
-) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `applications`
 --
 
 INSERT INTO `applications` (`id`, `nic`, `computer_no`, `quarter_type`, `residence_type`, `form_language`, `application_date`, `boss_status`, `boss_reason`, `file_status`, `file_reason`, `clerk_status`, `clerk_reason`, `final_status`, `final_reason`, `marks`, `waiting_list_no`, `created_at`, `applied_quarter_number`, `applied_quarter_location`, `application_date_received`, `application_submitted_at`, `application_updated_at`, `has_applicant_served_other_sub_dept`, `has_applicant_service_breaks`, `does_applicant_have_children_residing`, `does_applicant_have_spouse_residing`, `is_applicant_spouse_gov_employee`, `is_applicant_currently_renting`, `does_applicant_have_disability`, `has_applicant_rejected_quarter_before`, `has_applicant_applied_before`, `application_status`, `status`, `submit_status`, `branch_status`) VALUES
-(6, '200329012186', '200329012186', '', 'single', 'en', '2026-10-09', 'pending', NULL, 'pending', NULL, 'pending', NULL, 'pending', NULL, NULL, NULL, '2026-10-09 09:13:56', NULL, NULL, NULL, NULL, '2026-10-09 14:44:04', 0, 0, 0, 0, 0, 0, 0, 0, 0, 'draft', 'pending', 'pending', 'pending');
+(6, '200329012186', '72343242', 'Field', 'single', 'en', '2026-10-13', 'pending', NULL, 'pending', NULL, 'pending', NULL, 'pending', NULL, NULL, 1, '2026-10-09 09:13:56', 'B-205', 'Maradana', NULL, '2026-10-13 10:49:32', '2026-10-13 10:49:32', 1, 1, 1, 1, 1, 1, 1, 1, 1, 'submitted', 'pending', 'success', 'pending'),
+(7, '200329012186', '200312345678', 'Twin', 'single', 'en', '2026-10-13', 'pending', NULL, 'pending', NULL, 'pending', NULL, 'pending', NULL, NULL, 1, '2026-10-13 05:21:16', 'K-014', 'Colombo Fort', NULL, '2026-10-13 11:50:46', '2026-10-13 11:50:46', 1, 1, 1, 1, 1, 1, 1, 1, 1, 'submitted', 'pending', 'success', 'pending');
 
 -- --------------------------------------------------------
 
@@ -112,7 +113,17 @@ CREATE TABLE IF NOT EXISTS `children_details` (
   `child_civil_status` enum('married','unmarried','divorced','widowed') NOT NULL,
   PRIMARY KEY (`id`),
   KEY `fk_children_app` (`application_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `children_details`
+--
+
+INSERT INTO `children_details` (`id`, `application_id`, `child_full_name`, `child_gender`, `child_date_of_birth`, `child_civil_status`) VALUES
+(2, 6, 'ABCD', 'male', '2026-10-22', 'married'),
+(3, 6, 'hhgjg', 'female', '2026-10-15', 'divorced'),
+(4, 7, 'hhgjg', 'male', '2026-10-15', 'divorced'),
+(5, 7, 'ABCD', 'female', '2026-10-21', 'divorced');
 
 -- --------------------------------------------------------
 
@@ -174,7 +185,15 @@ CREATE TABLE IF NOT EXISTS `declaration_details` (
   `declaration_date` date NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_declaration_app` (`application_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `declaration_details`
+--
+
+INSERT INTO `declaration_details` (`id`, `application_id`, `declaration_salary_month`, `declaration_salary_year`, `salary_certificate_file_path`, `declaration_date`) VALUES
+(2, 6, 'May', 2026, 'uploads/salary_certificates/6acdbf6432c50.pdf', '2026-10-15'),
+(3, 7, 'September', 2026, 'uploads/salary_certificates/6acdcdbe8422e.pdf', '2026-10-22');
 
 -- --------------------------------------------------------
 
@@ -233,7 +252,15 @@ CREATE TABLE IF NOT EXISTS `disability_medical_details` (
   `medical_certificate_file_path` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_disability_app` (`application_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `disability_medical_details`
+--
+
+INSERT INTO `disability_medical_details` (`id`, `application_id`, `disability_or_illness_details`, `medical_certificate_file_path`) VALUES
+(2, 6, 'adkjansjdnad', 'uploads/medical_certificates/6acdbf6430bd2.pdf'),
+(3, 7, 'adkjansjdnad', 'uploads/medical_certificates/6acdcdbe82777.pdf');
 
 -- --------------------------------------------------------
 
@@ -325,7 +352,7 @@ CREATE TABLE IF NOT EXISTS `login_attempts` (
   PRIMARY KEY (`id`),
   KEY `idx_nic_time` (`nic`,`attempt_time`),
   KEY `idx_ip_time` (`ip_address`,`attempt_time`)
-) ENGINE=InnoDB AUTO_INCREMENT=40 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=41 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `login_attempts`
@@ -333,7 +360,8 @@ CREATE TABLE IF NOT EXISTS `login_attempts` (
 
 INSERT INTO `login_attempts` (`id`, `nic`, `ip_address`, `success`, `attempt_time`) VALUES
 (38, '200329012186', '::1', 1, '2026-10-09 06:53:44'),
-(39, '200329012186', '::1', 1, '2026-10-12 06:18:39');
+(39, '200329012186', '::1', 1, '2026-10-12 06:18:39'),
+(40, '200329012186', '::1', 1, '2026-10-13 03:52:37');
 
 -- --------------------------------------------------------
 
@@ -351,7 +379,15 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `nic` (`nic`)
-) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=19 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `notifications`
+--
+
+INSERT INTO `notifications` (`id`, `nic`, `title`, `message`, `is_read`, `created_at`) VALUES
+(17, '200329012186', 'Application Received', 'Your quarter application has been received and is under review.', 0, '2026-10-13 05:19:32'),
+(18, '200329012186', 'Application Received', 'Your quarter application has been received and is under review.', 0, '2026-10-13 06:20:46');
 
 -- --------------------------------------------------------
 
@@ -390,7 +426,15 @@ CREATE TABLE IF NOT EXISTS `permanent_residence_details` (
   `distance_from_branch_post_to_work_km` decimal(6,1) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_residence_app` (`application_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `permanent_residence_details`
+--
+
+INSERT INTO `permanent_residence_details` (`id`, `application_id`, `permanent_residence_address`, `is_applicant_owner_of_residence`, `owner_relationship_if_not_self`, `does_applicant_commute_from_residence`, `permanent_residence_district`, `nearest_major_city_name`, `distance_to_nearest_city_km`, `distance_from_branch_post_to_work_km`) VALUES
+(2, 6, 'nasdjasjdnaljd', 0, 'andbakjsbdad', 1, 'Kilinochchi', 'aasdada', 10.0, 2.0),
+(3, 7, 'nasdjasjdnaljd', 0, 'andbakjsbdad', 0, 'Mullaitivu', 'aasdada', 3.5, 5.0);
 
 -- --------------------------------------------------------
 
@@ -442,7 +486,15 @@ CREATE TABLE IF NOT EXISTS `previous_quarter_details` (
   `previous_applied_quarter_location` varchar(100) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_prevquarters_app` (`application_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `previous_quarter_details`
+--
+
+INSERT INTO `previous_quarter_details` (`id`, `application_id`, `previous_quarter_number`, `previous_quarter_vacated_date`, `previous_quarter_vacate_reason`, `has_applicant_rejected_quarter_before`, `rejected_quarter_details`, `has_applicant_applied_for_quarter_before`, `previous_application_date`, `previous_applied_quarter_type`, `previous_applied_quarter_location`) VALUES
+(2, 6, 'asdmasmdad', '2026-10-14', 'admakmddada', 1, NULL, 1, '2026-10-14', 'Gateman', 'Galle'),
+(3, 7, 'asdmasmdad', '2026-10-15', 'admakmddada', 1, NULL, 1, '2026-10-15', 'Row', 'Kandy');
 
 -- --------------------------------------------------------
 
@@ -593,7 +645,15 @@ CREATE TABLE IF NOT EXISTS `rented_house_details` (
   `rented_house_monthly_rent` decimal(12,2) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_rented_app` (`application_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `rented_house_details`
+--
+
+INSERT INTO `rented_house_details` (`id`, `application_id`, `rented_house_owner_name`, `rented_house_location`, `rented_house_address`, `rented_house_occupancy_date`, `rented_house_monthly_rent`) VALUES
+(2, 6, 'amsndlanda', 'asndnansda', 'amdnalsndla', '2026-10-21', 65876.00),
+(3, 7, 'amsndlanda', 'asndnansda', 'amdnalsndla', '2026-10-16', 665667.00);
 
 -- --------------------------------------------------------
 
@@ -679,7 +739,15 @@ CREATE TABLE IF NOT EXISTS `spouse_details` (
   `spouse_annual_salary` decimal(12,2) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_spouse_app` (`application_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `spouse_details`
+--
+
+INSERT INTO `spouse_details` (`id`, `application_id`, `spouse_full_name`, `spouse_national_id`, `spouse_occupation`, `spouse_will_reside_in_quarters`, `spouse_department`, `spouse_service_number`, `spouse_designation`, `spouse_institution_head_and_address`, `spouse_work_station_and_address`, `spouse_annual_salary`) VALUES
+(2, 6, 'dnlanldnalnsdlasd', '466666666666654', 'Clerk', NULL, 'asdadajdnajd', '6786786', 'ajndansdlnad', 'asndjandjna', 'ajndajndljandna', 9869778.00),
+(3, 7, 'dnlanldnalnsdlasd', '466666666666654', 'wfsfddddddddddddddd', NULL, 'Food', '8', 'ajndansdlnad', 'asndjandjna', 'ajndajndljandna', 0.00);
 
 -- --------------------------------------------------------
 
@@ -786,7 +854,7 @@ CREATE TABLE IF NOT EXISTS `users` (
 --
 
 INSERT INTO `users` (`nic`, `name`, `email`, `password`, `computer_number`, `mobile`, `is_active`, `created_at`, `updated_at`, `applicant_initials`, `applicant_current_work_station`, `applicant_service_number`, `applicant_salary_sheet_number`, `applicant_date_of_birth`, `applicant_private_address`, `applicant_official_address`, `applicant_civil_status`, `applicant_designation`, `applicant_current_sub_department`, `applicant_salary_account_branch`, `applicant_personal_file_office`, `is_applicant_service_confirmed`, `applicant_service_confirmed_date`, `applicant_gov_first_appointment_date`, `applicant_railway_first_appointment_date`, `applicant_current_sub_dept_duty_date`, `applicant_current_post_appointment_date`, `role`) VALUES
-('200329012186', 'Gayan Pradeep Jayawardhana', 'gpjprimal@gmail.com', '$2y$12$lMjl8SG219PpPa0FR5a7eux/Wla6.TtbY9EZHF3.NfjCbb.2byhse', '200329012186', '0768102100', 1, '2026-10-09 06:52:34', '2026-10-09 06:52:34', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, 'applicant');
+('200329012186', 'Gayan Pradeep Jayawardhana', 'gpjprimal@gmail.com', '$2y$12$lMjl8SG219PpPa0FR5a7eux/Wla6.TtbY9EZHF3.NfjCbb.2byhse', '200312345678', '0768102100', 1, '2026-10-09 06:52:34', '2026-10-13 06:20:46', 'aklsndlandlandljandlnad', 'Kandy Station', '2176313123', '69696997', '2026-10-22', 'annsjdnaljdna', 'adlknalkdnalnd', 'Married', 'Engineer', 'Mechanical', 'Bank of Ceylon - Kandy City', 'Divisional Office - Kandy', 1, '2026-10-23', '2026-10-14', '2026-10-15', '2026-10-16', '2026-10-17', 'applicant');
 
 -- --------------------------------------------------------
 
@@ -806,7 +874,15 @@ CREATE TABLE IF NOT EXISTS `waiting_list` (
   `employee_marks` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `nic` (`nic`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `waiting_list`
+--
+
+INSERT INTO `waiting_list` (`id`, `nic`, `position`, `quarter_type`, `created_at`, `applied_date`, `designation_score`, `employee_marks`) VALUES
+(5, '200329012186', 1, 'Field', '2026-10-13 05:19:32', '2026-10-13', 0, 0),
+(6, '200329012186', 1, 'Twin', '2026-10-13 06:20:46', '2026-10-13', 0, 0);
 
 -- --------------------------------------------------------
 

@@ -158,6 +158,7 @@ $csrfToken = generateCsrfToken();
                        name="computer_number" 
                        placeholder="Enter your computer number" 
                        value="<?php echo htmlspecialchars($formData['computer_number'] ?? ''); ?>"
+                       oninput="this.value = this.value.replace(/[^0-9]/g, '')"
                        required
                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#b59410] focus:border-transparent transition">
             </div>

@@ -138,7 +138,7 @@ $type = isset($_GET['type']) ? '?type=' . urlencode($_GET['type']) : '';
             </div>
 
             <div>
-                <a href="../dashboard/index.php" class="btn-home">මුල් පිටුවට යන්න</a>
+                <a href="<?php echo baseUrl('dashboard'); ?>" class="btn-home">මුල් පිටුවට යන්න</a>
             </div>
         </div>
     </div>

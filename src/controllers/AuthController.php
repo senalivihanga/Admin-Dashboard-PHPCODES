@@ -111,6 +111,8 @@ class AuthController {
             $_SESSION['user_name'] = $user['name'];
             $_SESSION['user_email'] = $user['email'];
             $_SESSION['computer_number'] = $user['computer_number'] ?? '';
+            $_SESSION['computer_no'] = $_SESSION['computer_number'];
+            $_SESSION['phone_no'] = $user['mobile'] ?? '';
             $_SESSION['session_valid'] = true;
             $_SESSION['fingerprint'] = $this->getSessionFingerprint();
             $_SESSION['logged_in_at'] = time();

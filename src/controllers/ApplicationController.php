@@ -93,7 +93,7 @@ class ApplicationController {
         $this->auth->requireLogin();
         $nic = $_SESSION['nic'];
         $formLanguage = $_POST['form_language'] ?? 'en';
-        $formPath = $formLanguage === 'single_residence' ? '/application/form/si' : '/application/form/en';
+        $formPath = $formLanguage === 'si' ? '/application/form/si' : '/application/form/en';
 
         $fieldAliases = [
             'full_name' => 'name',
@@ -201,7 +201,7 @@ class ApplicationController {
             redirect($formPath);
             return;
         }
-        if (!in_array($formLanguage, ['en', 'single_residence'], true)) {
+        if (!in_array($formLanguage, ['en', 'si'], true)) {
             $formLanguage = 'en';
             $formPath = '/application/form/en';
         }
@@ -617,7 +617,9 @@ class ApplicationController {
             // Commit transaction
             $conn->commit();
             $_SESSION['success_message'] = "Application submitted successfully!";
-            redirect('/dashboard');
+            $appNo = sprintf('SLR/AOT/%s/%04d', date('Y'), $applicationId);
+            $successLang = $formLanguage;
+            redirect('/application/success/' . $successLang . '?appNo=' . urlencode($appNo));
 
         } catch (Exception $e) {
             $conn->rollback();

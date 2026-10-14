@@ -282,11 +282,11 @@ include __DIR__ . '/../layouts/header.php';
                         </div>
                         <div class="form-group">
                             <label>V. Computer Number :</label>
-                            <input type="number" name="computer_number" id="computer_no" class="table-input auto-fill" value="<?php echo htmlspecialchars($_SESSION['computer_no'] ?? ''); ?>" style="padding: 10px; font-size: 14px; width: 100%;" onkeydown="handleEnter(event, 'salary_slip_no')">
+                            <input type="text" name="computer_number" id="computer_no" class="table-input auto-fill" value="<?php echo htmlspecialchars($_SESSION['computer_no'] ?? ''); ?>" style="padding: 10px; font-size: 14px; width: 100%;" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')" onkeydown="handleEnter(event, 'salary_slip_no')">
                         </div>
                         <div class="form-group">
                             <label>Salary Slip Number :</label>
-                            <input type="number" name="applicant_salary_sheet_number" class="table-input" style="padding: 10px; font-size: 14px; width: 100%;" onkeydown="handleEnter(event, 'dob')">
+                            <input type="text" name="applicant_salary_sheet_number" class="table-input" style="padding: 10px; font-size: 14px; width: 100%;" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')" onkeydown="handleEnter(event, 'dob')">
                         </div>
                     </div>
 
@@ -431,6 +431,7 @@ include __DIR__ . '/../layouts/header.php';
                             </tbody>
                         </table>
                         <button type="button" class="action-btn" onclick="addTableRow('table-v-element')" style="margin-top:10px; background:#0f4c81; color:white; border:none; padding:5px 10px; cursor:pointer;">Add Row</button>
+                        <button type="button" class="action-btn" onclick="removeTableRow('table-v-element')" style="margin-top:10px; background:#c0392b; color:white; border:none; padding:5px 10px; cursor:pointer;">Remove Last Row</button>
                     </div>
 
                     <div class="form-group full-width" style="margin-top:15px;">
@@ -459,6 +460,7 @@ include __DIR__ . '/../layouts/header.php';
                             </tbody>
                         </table>
                         <button type="button" class="action-btn" onclick="addTableRow('table-vi-element')" style="margin-top:10px; background:#0f4c81; color:white; border:none; padding:5px 10px; cursor:pointer;">Add Row</button>
+                        <button type="button" class="action-btn" onclick="removeTableRow('table-vi-element')" style="margin-top:10px; background:#c0392b; color:white; border:none; padding:5px 10px; cursor:pointer;">Remove Last Row</button>
                     </div>
                 </div>
 
@@ -585,7 +587,8 @@ include __DIR__ . '/../layouts/header.php';
 
                                 <div class="form-group">
                                     <label>V. Current Annual Salary :</label>
-                                    <input type="text" name="spouse_annual_salary" class="table-input" style="padding: 10px; font-size: 14px; width: 100%;" onkeydown="handleEnter(event, 'permanent_address_sec6')">
+                                     <span style="font-weight: bold;">Rs.</span>
+                                    <input type="number" name="spouse_annual_salary" class="table-input" style="padding: 10px; font-size: 14px; width: 100%;" min="0">
                                 </div>
                             </div>
                         </div>
@@ -632,7 +635,7 @@ include __DIR__ . '/../layouts/header.php';
                         <div class="form-group">
                             <label>V. Nearest Main Town and Distance to it :</label>
                             <input type="text" name="nearest_major_city_name" class="table-input" placeholder="Nearest town">
-                            <input type="number" id="nearest-city-distance" name="distance_to_nearest_city_km" class="table-input" min="0" step="0.1" placeholder="Distance (km)" onkeydown="handleEnter(event, 'branch-to-work-distance')">
+                            <input type="number" id="nearest-city-distance" name="distance_to_nearest_city_km" class="table-input" min="0" step="0" placeholder="(km)" onkeydown="handleEnter(event, 'branch-to-work-distance')">
                         </div>
                     </div>
 
@@ -936,6 +939,24 @@ include __DIR__ . '/../layouts/header.php';
 
     <script>
         let currentPage = 1;
+        
+                // Show the page/section of the first invalid field when Submit is clicked
+        document.querySelector('.submit-btn').addEventListener('click', function () {
+            const firstInvalid = document.querySelector('#railway-form input:invalid, #railway-form select:invalid, #railway-form textarea:invalid');
+            if (!firstInvalid) return;
+
+            const page = firstInvalid.closest('.page-section');
+            if (page) {
+                document.querySelectorAll('.page-section').forEach(p => p.style.display = 'none');
+                page.style.display = 'block';
+            }
+
+            let el = firstInvalid.parentElement;
+            while (el && el.id !== 'railway-form') {
+                if (el.style && el.style.display === 'none') el.style.display = 'block';
+                el = el.parentElement;
+            }
+        });
 
         window.onload = function() {
             const userData = {
@@ -1007,6 +1028,11 @@ include __DIR__ . '/../layouts/header.php';
                 <td><input type="date" name="${fromName}[]" class="form-input-date from-date" onchange="validateToDate(this)"></td>
                 <td><input type="date" name="${toName}[]" class="form-input-date to-date"></td>
             `;
+        }
+
+        function removeTableRow(tableId) {
+            const rows = document.getElementById(tableId).getElementsByTagName('tbody')[0].rows;
+            if (rows.length > 1) rows[rows.length - 1].remove();
         }
 
     function toggleContainer(containerId, show) {
