@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../../config/config.php';
+require_once __DIR__ . '/../helpers/roles.php';
 
 class AuthController {
     private $userModel;
@@ -114,6 +115,15 @@ class AuthController {
             $_SESSION['computer_no'] = $_SESSION['computer_number'];
             $_SESSION['phone_no'] = $user['mobile'] ?? '';
             $_SESSION['session_valid'] = true;
+            $_SESSION['role_id']   = (int)($user['role_id'] ?? 1);
+            $_SESSION['user_role'] = roleName($_SESSION['role_id']);
+
+            // Admin header (admin_header.php) checks this to show the admin menu
+            if ($_SESSION['role_id'] >= 2) {
+                $_SESSION['admin_name'] = $user['name'];
+            } else {
+                unset($_SESSION['admin_name']);
+            }
             $_SESSION['fingerprint'] = $this->getSessionFingerprint();
             $_SESSION['logged_in_at'] = time();
             

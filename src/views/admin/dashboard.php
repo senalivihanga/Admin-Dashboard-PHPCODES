@@ -5,10 +5,6 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Mock admin session if not set
-if (!isset($_SESSION['admin_name'])) {
-    $_SESSION['admin_name'] = 'Admin Name';
-}
 
 $admin_name = $_SESSION['admin_name'];
 

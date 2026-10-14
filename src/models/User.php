@@ -79,8 +79,8 @@ class User {
         // Hash password with bcrypt (cost factor 12)
         $hashedPassword = password_hash($data['password'], PASSWORD_BCRYPT, ['cost' => 12]);
         
-        $sql = "INSERT INTO {$this->table} (nic, name, email, computer_number, mobile, password) 
-                VALUES (?, ?, ?, ?, ?, ?)";
+        $sql = "INSERT INTO {$this->table} (nic, name, email, computer_number, mobile, password, role_id) 
+        VALUES (?, ?, ?, ?, ?, ?, 1)";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param("ssssss", 
             $data['nic'], 

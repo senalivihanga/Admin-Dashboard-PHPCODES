@@ -126,6 +126,27 @@ function route($path, $method = 'GET') {
         $path = '/home';
     }
 
+        // ---------- ROLE-BASED ACCESS ----------
+    require_once __DIR__ . '/../src/helpers/roles.php';
+
+    // Admin area: only staff roles, and only their own pages
+    if (strpos($path, '/admin/') === 0) {
+        if (!canAccessAdminPath($path)) {
+            http_response_code(403);
+            echo '<h1>403 - Access Denied</h1>';
+            echo '<p>You do not have permission to view this page.</p>';
+            echo '<p><a href="' . baseUrl(roleHomePath(currentRoleId() ?: 1)) . '">Go to my dashboard</a></p>';
+            return;
+        }
+    }
+
+    // Staff should not land on the applicant dashboard
+    if ($path === '/dashboard' && currentRoleId() >= 2) {
+        header('Location: ' . baseUrl(roleHomePath(currentRoleId())));
+        exit();
+    }
+    // ---------------------------------------
+
     // Define routes - map URL paths to view files
     $routes = [
         // Existing routes

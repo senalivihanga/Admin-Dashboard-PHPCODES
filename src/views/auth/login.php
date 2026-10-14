@@ -3,14 +3,15 @@
  * Login Page with Security Features
  */
 require_once __DIR__ . '/../../../config/config.php';
+require_once __DIR__ . '/../../helpers/roles.php';
 
 // Session is already started in index.php
 
 $pageTitle = 'Login - Quarter Management System';
 
-// If already logged in, redirect to dashboard
+// If already logged in, redirect to the role's dashboard
 if (isset($_SESSION['nic']) && isset($_SESSION['session_valid'])) {
-    header('Location: ' . baseUrl('dashboard'));
+    header('Location: ' . baseUrl(roleHomePath(currentRoleId() ?: 1)));
     exit();
 }
 
@@ -46,17 +47,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     } else {
         $result = $auth->login($nic, $password);
         if ($result['success']) {
-            // Redirect to intended page or dashboard
-            $redirect = $_SESSION['redirect_after_login'] ?? '/dashboard';
-            unset($_SESSION['redirect_after_login']);
-            
-            // Clean the redirect path to avoid duplication
-            $redirect = ltrim($redirect, '/');
-            // If the redirect is empty or just 'dashboard', use dashboard
-            if (empty($redirect) || $redirect === 'dashboard' || $redirect === '/') {
-                $redirect = 'dashboard';
+            $roleId = currentRoleId();
+
+            if ($roleId === ROLE_APPLICANT) {
+                // applicants return to the page they originally wanted
+                $redirect = $_SESSION['redirect_after_login'] ?? '/dashboard';
+                unset($_SESSION['redirect_after_login']);
+                $redirect = ltrim($redirect, '/');
+                if (empty($redirect) || $redirect === 'dashboard') {
+                    $redirect = 'dashboard';
+                }
+            } else {
+                // staff always go to their own dashboard
+                unset($_SESSION['redirect_after_login']);
+                $redirect = roleHomePath($roleId);
             }
-            
+
             header('Location: ' . baseUrl($redirect));
             exit();
         } else {
