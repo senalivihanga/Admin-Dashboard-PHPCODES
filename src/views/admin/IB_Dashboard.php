@@ -20,7 +20,7 @@ $dashboardStats = [
 ];
 
 $userData = [
-    'name' => 'Immediate Boss',
+    'name' => $_SESSION['user_name'] ?? 'Immediate Boss',
     'role' => 'Sri Lanka Railways - AOT',
     'initials' => 'IB'
 ];
@@ -339,28 +339,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 </style>
 
 <div class="dashboard-container">
-    
-    <?php if (isset($_SESSION['admin_name']) || (isset($_SESSION['role']) && $_SESSION['role'] === 'admin')): ?>
-        <a href="dashboard.php" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
-    <?php else: ?>
-        <div class="user-profile-wrapper">
-            <div class="user-profile-badge" onclick="toggleDropdown()">
-                <div style="width: 35px; height: 35px; background: #ffffff; color: #7A1C1C; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.85rem;">
-                    <?php echo htmlspecialchars($userData['initials']); ?>
-                </div>
-                <div>
-                    <div style="font-weight: 600; font-size: 0.9rem;"><?php echo htmlspecialchars($userData['name']); ?></div>
-                </div>
-                <i class="fa-solid fa-chevron-down" style="font-size: 0.75rem; color: #f3e8ff; margin-left: 5px;"></i>
-            </div>
-
-            <div id="profileDropdown" class="profile-dropdown">
-                <a href="edit_profile.php"><i class="fa-solid fa-user-pen"></i> Edit Profile</a>
-                <a href="#" class="logout-btn" onclick="openLogoutModal(event)"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
-            </div>
-        </div>
-    <?php endif; ?>
-
     <div class="dashboard-flex-container">
         
         <div class="row">
@@ -420,18 +398,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             </a>
         </div>
 
-    </div>
-</div>
-
-<div id="logoutModal" class="custom-modal">
-    <div class="custom-modal-content">
-        <i class="fa-solid fa-triangle-exclamation"></i>
-        <h3>Confirm Logout</h3>
-        <p>Are you sure you want to log out from the Immediate Boss portal?</p>
-        <div class="modal-action-btns">
-            <button type="button" class="btn-modal-cancel" onclick="closeLogoutModal()">Cancel</button>
-            <button type="button" class="btn-modal-confirm" onclick="executeLogout()">Logout</button>
-        </div>
     </div>
 </div>
 
