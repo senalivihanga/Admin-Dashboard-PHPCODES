@@ -11,7 +11,7 @@ if (session_status() === PHP_SESSION_NONE) {
 $pageTitle = "Application Approval List - Sri Lanka Railways";
 
 $userData = [
-    'name' => 'Immediate Boss',
+    'name' => $_SESSION['user_name'] ?? 'Immediate Boss',
     'role' => 'Sri Lanka Railways - AOT',
     'initials' => 'IB'
 ];
@@ -20,68 +20,65 @@ $user = [
     'name' => $userData['name']
 ];
 
-// Initialize mock session data if not already set[cite: 2]
-if (!isset($_SESSION['applications'])) {
-    $_SESSION['applications'] = [
-        ['id' => 1, 'appNo' => 'SLR/AOT/2026/0001', 'nic' => '981234567V', 'compNo' => '1054', 'name' => 'A. B. Perera', 'desig' => 'Station Master'],
-        ['id' => 2, 'appNo' => 'SLR/AOT/2026/0002', 'nic' => '957891234V', 'compNo' => '1055', 'name' => 'K. D. Silva', 'desig' => 'Signal Inspector'],
-        ['id' => 3, 'appNo' => 'SLR/AOT/2026/0003', 'nic' => '923456789V', 'compNo' => '1056', 'name' => 'M. N. Fernando', 'desig' => 'Locomotive Driver']
-    ];
-}
-
-if (!isset($_SESSION['approvedApplications'])) {
-    $_SESSION['approvedApplications'] = [];
-}
-if (!isset($_SESSION['rejectedApplications'])) {
-    $_SESSION['rejectedApplications'] = [];
-}
-
 $alert_msg = '';
 $alert_type = '';
+$conn = getDBConnection();
 
-// Handle Form Actions (Approve or Reject)[cite: 2]
+// Save the Immediate Boss decision on the application record.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-    $id = intval($_POST['id'] ?? 0);
+    $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
+    $reason = trim((string)($_POST['rejectionReason'] ?? ''));
 
-    if ($action === 'approve') {
-        foreach ($_SESSION['applications'] as $index => $item) {
-            if ($item['id'] === $id) {
-                $_SESSION['approvedApplications'][] = $item;
-                unset($_SESSION['applications'][$index]);
-                $_SESSION['applications'] = array_values($_SESSION['applications']);
-                $alert_msg = "Application approved successfully and moved to Approved List.";
-                $alert_type = "success";
-                break;
-            }
+    if ($id && ($action === 'approve' || ($action === 'reject' && $reason !== ''))) {
+        $bossStatus = $action === 'approve' ? 'approved' : 'rejected';
+        $bossReason = $action === 'reject' ? $reason : null;
+           $applicationStatus = $action === 'approve' ? 'pending_clerk' : 'rejected';
+        $stmt = $conn->prepare(
+            "UPDATE applications
+               SET boss_status = ?, boss_reason = ?, application_status = ?
+               WHERE id = ? AND boss_status = 'pending' AND application_status = 'submitted'"
+        );
+           $stmt->bind_param('sssi', $bossStatus, $bossReason, $applicationStatus, $id);
+        $stmt->execute();
+
+        if ($stmt->affected_rows === 1) {
+            $alert_msg = $action === 'approve'
+                ? 'Application approved successfully.'
+                : 'Application rejected successfully.';
+            $alert_type = $action === 'approve' ? 'success' : 'error';
+        } else {
+            $alert_msg = 'This application is no longer awaiting your decision.';
+            $alert_type = 'error';
         }
+        $stmt->close();
     } elseif ($action === 'reject') {
-        $reason = trim($_POST['rejectionReason'] ?? '');
-        if (!empty($reason)) {
-            foreach ($_SESSION['applications'] as $index => $item) {
-                if ($item['id'] === $id) {
-                    $item['rejectionReason'] = $reason;
-                    $_SESSION['rejectedApplications'][] = $item;
-                    unset($_SESSION['applications'][$index]);
-                    $_SESSION['applications'] = array_values($_SESSION['applications']);
-                    $alert_msg = "Application rejected and moved to Rejected List.";
-                    $alert_type = "error";
-                    break;
-                }
-            }
-        }
+        $alert_msg = 'A rejection reason is required.';
+        $alert_type = 'error';
     }
 }
 
-// Handle Search Filter[cite: 2]
+// Fetch the current Immediate Boss queue and applicant details.
 $searchQuery = trim($_GET['search'] ?? '');
-$displayData = $_SESSION['applications'];
+$sql = "SELECT a.id, a.application_no, a.nic, a.computer_no, a.application_date,
+               u.name, u.applicant_designation
+        FROM applications AS a
+        INNER JOIN users AS u ON u.nic = a.nic
+        WHERE a.boss_status = 'pending'
+                    AND a.application_status = 'submitted'";
 
-if (!empty($searchQuery)) {
-    $displayData = array_filter($displayData, function($item) use ($searchQuery) {
-        return stripos($item['nic'], $searchQuery) !== false || stripos($item['name'], $searchQuery) !== false;
-    });
+if ($searchQuery !== '') {
+    $sql .= " AND (a.application_no LIKE ? OR a.nic LIKE ? OR a.computer_no LIKE ? OR u.name LIKE ?)";
+    $searchTerm = '%' . $searchQuery . '%';
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date ASC, a.id ASC');
+    $stmt->bind_param('ssss', $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+} else {
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date ASC, a.id ASC');
 }
+$stmt->execute();
+$displayData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
 
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
@@ -454,7 +451,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     <form method="GET" action="" class="search-card">
         <div class="search-wrapper">
             <div class="search-input-container">
-                <input type="text" name="search" class="search-input" placeholder="Search by NIC or Name..." value="<?php echo htmlspecialchars($searchQuery); ?>">
+                <input type="text" name="search" class="search-input" placeholder="Search by Application No, NIC or Name..." value="<?php echo htmlspecialchars($searchQuery); ?>">
                 <?php if (!empty($searchQuery)): ?>
                     <a href="?" class="search-clear-icon" title="Clear Search"><i class="fa-solid fa-xmark"></i></a>
                 <?php endif; ?>
@@ -477,7 +474,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                 <thead>
                     <tr>
                         <th>No.</th>
-                        <th>Application Number</th>
+                        <th>Application No</th>
                         <th>NIC</th>
                         <th>Computer Number</th>
                         <th>Name</th>
@@ -495,11 +492,11 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                         <?php $no = 1; foreach ($displayData as $item): ?>
                             <tr id="row-<?php echo $item['id']; ?>">
                                 <td><?php echo $no++; ?></td>
-                                <td><strong><?php echo htmlspecialchars($item['appNo']); ?></strong></td>
+                                <td><strong><?php echo htmlspecialchars($item['application_no'] ?? $item['id']); ?></strong></td>
                                 <td><?php echo htmlspecialchars($item['nic']); ?></td>
-                                <td><?php echo htmlspecialchars($item['compNo']); ?></td>
+                                <td><?php echo htmlspecialchars($item['computer_no'] ?? ''); ?></td>
                                 <td><?php echo htmlspecialchars($item['name']); ?></td>
-                                <td><?php echo htmlspecialchars($item['desig']); ?></td>
+                                <td><?php echo htmlspecialchars($item['applicant_designation'] ?? ''); ?></td>
                                 <td>
                                     <div class="action-cell">
                                         <a href="view-application-details.php?id=<?php echo $item['id']; ?>" class="action-btn btn-view" title="View Application"><i class="fa-solid fa-eye"></i></a>

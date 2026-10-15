@@ -20,71 +20,65 @@ $user = [
     'name' => $userData['name']
 ];
 
-// Initialize or update session data with 6 example applications (PF පිටුවේ මෙන් උදාහරණ 6ම ඇතුළත් කිරීම)[cite: 1, 2]
-if (!isset($_SESSION['applications']) || count($_SESSION['applications']) < 6) {
-    $_SESSION['applications'] = [
-        ['id' => 1, 'appNo' => 'SLR/AOT/2026/0001', 'nic' => '981234567V', 'compNo' => '101', 'name' => 'A. B. Perera', 'desig' => 'Station Master', 'ibDesig' => 'Chief Station Master', 'ibWorkplace' => 'Colombo Fort Railway Station'],
-        ['id' => 2, 'appNo' => 'SLR/AOT/2026/0002', 'nic' => '957891234V', 'compNo' => '102', 'name' => 'K. D. Silva', 'desig' => 'Signal Inspector', 'ibDesig' => 'District Signal Engineer', 'ibWorkplace' => 'Maradana Signaling Dept'],
-        ['id' => 3, 'appNo' => 'SLR/AOT/2026/0003', 'nic' => '923456789V', 'compNo' => '103', 'name' => 'M. N. Fernando', 'desig' => 'Locomotive Driver', 'ibDesig' => 'Chief Locomotive Driver', 'ibWorkplace' => 'Ratmalana Workshop'],
-        ['id' => 4, 'appNo' => 'SLR/AOT/2026/0004', 'nic' => '905678123V', 'compNo' => '104', 'name' => 'S. P. Wickramasinghe', 'desig' => 'Way Inspector', 'ibDesig' => 'Chief Engineer (Way & Works)', 'ibWorkplace' => 'Maradana Engineering Yard'],
-        ['id' => 5, 'appNo' => 'SLR/AOT/2026/0005', 'nic' => '882345678V', 'compNo' => '105', 'name' => 'W. A. Jayasuriya', 'desig' => 'Telecommunication Tech', 'ibDesig' => 'Signal & Telecom Engineer', 'ibWorkplace' => 'Colombo Central S&T'],
-        ['id' => 6, 'appNo' => 'SLR/AOT/2026/0006', 'nic' => '941122334V', 'compNo' => '106', 'name' => 'P. R. Gunawardena', 'desig' => 'Guard', 'ibDesig' => 'Chief Transportation Supt', 'ibWorkplace' => 'Badulla Railway Station']
-    ];
-}
-
-if (!isset($_SESSION['approvedApplications'])) {
-    $_SESSION['approvedApplications'] = [];
-}
-if (!isset($_SESSION['rejectedApplications'])) {
-    $_SESSION['rejectedApplications'] = [];
-}
-
 $alert_msg = '';
 $alert_type = '';
+$conn = getDBConnection();
 
-// Handle Form Actions (Approve or Reject)[cite: 2]
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-    $id = intval($_POST['id'] ?? 0);
+    $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
+    $reason = trim((string)($_POST['rejectionReason'] ?? ''));
 
-    if ($action === 'approve') {
-        foreach ($_SESSION['applications'] as $index => $item) {
-            if ($item['id'] === $id) {
-                $_SESSION['approvedApplications'][] = $item;
-                unset($_SESSION['applications'][$index]);
-                $_SESSION['applications'] = array_values($_SESSION['applications']);
-                $alert_msg = "Application approved successfully and moved to Approved List.";
-                $alert_type = "success";
-                break;
-            }
+    if ($id && ($action === 'approve' || ($action === 'reject' && $reason !== ''))) {
+        $bossStatus = $action === 'approve' ? 'approved' : 'rejected';
+        $bossReason = $action === 'reject' ? $reason : null;
+        $applicationStatus = $action === 'approve' ? 'pending_clerk' : 'rejected';
+        $stmt = $conn->prepare(
+            "UPDATE applications
+             SET boss_status = ?, boss_reason = ?, application_status = ?
+             WHERE id = ? AND boss_status = 'pending' AND application_status = 'submitted'
+               AND has_applicant_applied_before = 1"
+        );
+        $stmt->bind_param('sssi', $bossStatus, $bossReason, $applicationStatus, $id);
+        $stmt->execute();
+
+        if ($stmt->affected_rows === 1) {
+            $alert_msg = $action === 'approve'
+                ? 'Resubmitted application approved successfully.'
+                : 'Resubmitted application rejected successfully.';
+            $alert_type = $action === 'approve' ? 'success' : 'error';
+        } else {
+            $alert_msg = 'This application is no longer awaiting your decision.';
+            $alert_type = 'error';
         }
+        $stmt->close();
     } elseif ($action === 'reject') {
-        $reason = trim($_POST['rejectionReason'] ?? '');
-        if (!empty($reason)) {
-            foreach ($_SESSION['applications'] as $index => $item) {
-                if ($item['id'] === $id) {
-                    $item['rejectionReason'] = $reason;
-                    $_SESSION['rejectedApplications'][] = $item;
-                    unset($_SESSION['applications'][$index]);
-                    $_SESSION['applications'] = array_values($_SESSION['applications']);
-                    $alert_msg = "Application rejected and moved to Rejected List.";
-                    $alert_type = "error";
-                    break;
-                }
-            }
-        }
+        $alert_msg = 'A rejection reason is required.';
+        $alert_type = 'error';
     }
 }
 
-// Handle Search Filter[cite: 2]
 $searchQuery = trim($_GET['search'] ?? '');
-$displayData = $_SESSION['applications'];
+$sql = "SELECT a.id, a.application_no, a.nic, a.computer_no,
+               u.name, u.applicant_designation
+        FROM applications AS a
+        INNER JOIN users AS u ON u.nic = a.nic
+        WHERE a.boss_status = 'pending'
+          AND a.application_status = 'submitted'
+          AND a.has_applicant_applied_before = 1";
 
-if (!empty($searchQuery)) {
-    $displayData = array_filter($displayData, function($item) use ($searchQuery) {
-        return stripos($item['nic'], $searchQuery) !== false || stripos($item['name'], $searchQuery) !== false;
-    });
+if ($searchQuery !== '') {
+    $sql .= " AND (a.application_no LIKE ? OR a.nic LIKE ? OR a.computer_no LIKE ? OR u.name LIKE ?)";
+    $searchTerm = '%' . $searchQuery . '%';
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date ASC, a.id ASC');
+    $stmt->bind_param('ssss', $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+} else {
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date ASC, a.id ASC');
 }
+$stmt->execute();
+$displayData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
 
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
@@ -495,11 +489,11 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                         <?php $no = 1; foreach ($displayData as $item): ?>
                             <tr id="row-<?php echo $item['id']; ?>">
                                 <td><?php echo $no++; ?></td>
-                                <td><strong><?php echo htmlspecialchars($item['appNo']); ?></strong></td>
+                                <td><strong><?php echo htmlspecialchars($item['application_no'] ?? (string)$item['id']); ?></strong></td>
                                 <td><?php echo htmlspecialchars($item['nic']); ?></td>
-                                <td><?php echo htmlspecialchars($item['compNo']); ?></td>
+                                <td><?php echo htmlspecialchars($item['computer_no']); ?></td>
                                 <td><?php echo htmlspecialchars($item['name']); ?></td>
-                                <td><?php echo htmlspecialchars($item['desig']); ?></td>
+                                <td><?php echo htmlspecialchars($item['applicant_designation'] ?? ''); ?></td>
                                 <td>
                                     <div class="action-cell">
                                         <a href="view-application-details.php?id=<?php echo $item['id']; ?>" class="action-btn btn-view" title="View Application"><i class="fa-solid fa-eye"></i></a>
