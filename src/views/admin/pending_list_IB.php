@@ -20,6 +20,28 @@ $user = [
     'name' => $userData['name']
 ];
 
+$searchVal = trim($_GET['search'] ?? '');
+$conn = getDBConnection();
+$sql = "SELECT a.id, a.application_no, a.nic, a.computer_no, a.boss_status,
+               u.name, u.applicant_designation
+        FROM applications AS a
+        INNER JOIN users AS u ON u.nic = a.nic
+        WHERE a.boss_status = 'pending'
+          AND a.application_status = 'submitted'";
+
+if ($searchVal !== '') {
+    $sql .= " AND (a.application_no LIKE ? OR a.nic LIKE ? OR a.computer_no LIKE ? OR u.name LIKE ?)";
+    $searchTerm = '%' . $searchVal . '%';
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date ASC, a.id ASC');
+    $stmt->bind_param('ssss', $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+} else {
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date ASC, a.id ASC');
+}
+$stmt->execute();
+$pendingData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
+
 // Admin Header එක ඇතුළත් කිරීම[cite: 19]
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
@@ -234,9 +256,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     <!-- Search Form handled via PHP GET -->
     <form method="GET" action="" class="search-card">
         <div class="search-wrapper">
-            <?php 
-            $searchVal = isset($_GET['search']) ? trim($_GET['search']) : ''; 
-            ?>
             <div class="search-field">
                 <input type="text" name="search" id="searchInput" class="search-input" placeholder="Search by NIC or Name..." value="<?php echo htmlspecialchars($searchVal); ?>" oninput="if (this.value.trim() === '') this.form.submit();">
                 <?php if ($searchVal !== ''): ?>
@@ -262,32 +281,18 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             </thead>
             <tbody>
                 <?php
-                // Sample Data Array (Can be replaced with database query results later)[cite: 19]
-                $pendingData = [
-                    ['id' => 1, 'appNo' => 'SLR/AOT/2026/0006', 'nic' => '961234567V', 'compNo' => '115', 'name' => 'R. M. Rathnayake', 'desig' => 'Station Master', 'status' => 'Pending'],
-                    ['id' => 2, 'appNo' => 'SLR/AOT/2026/0007', 'nic' => '934561239V', 'compNo' => '118', 'name' => 'T. S. Wickramasinghe', 'desig' => 'Guard', 'status' => 'Pending']
-                ];
-
-                $searchTermLower = strtolower($searchVal);
-
-                // Filter records based on search query[cite: 19]
-                $filtered = array_filter($pendingData, function($item) use ($searchTermLower) {
-                    if ($searchTermLower === '') return true;
-                    return strpos(strtolower($item['nic']), $searchTermLower) !== false || strpos(strtolower($item['name']), $searchTermLower) !== false;
-                });
-
-                if (empty($filtered)) {
+                if (empty($pendingData)) {
                     echo '<tr><td colspan="7" style="text-align: center; color: #64748b; padding: 20px;">No pending records found.</td></tr>';
                 } else {
                     $counter = 1;
-                    foreach ($filtered as $item) {
+                    foreach ($pendingData as $item) {
                         echo '<tr>';
                         echo '<td>' . $counter++ . '</td>';
-                        echo '<td><strong>' . htmlspecialchars($item['appNo']) . '</strong></td>';
+                        echo '<td><strong>' . htmlspecialchars($item['application_no'] ?? (string)$item['id']) . '</strong></td>';
                         echo '<td>' . htmlspecialchars($item['nic']) . '</td>';
-                        echo '<td>' . htmlspecialchars($item['compNo']) . '</td>';
+                        echo '<td>' . htmlspecialchars($item['computer_no']) . '</td>';
                         echo '<td>' . htmlspecialchars($item['name']) . '</td>';
-                        echo '<td>' . htmlspecialchars($item['desig']) . '</td>';
+                        echo '<td>' . htmlspecialchars($item['applicant_designation'] ?? '') . '</td>';
                         echo '<td><span class="badge"><i class="fa-solid fa-clock" title="Pending"></i></span></td>';
                         echo '</tr>';
                     }

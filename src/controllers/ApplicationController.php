@@ -213,6 +213,30 @@ class ApplicationController {
         $conn->begin_transaction();
 
         try {
+                        // --- Generate the formatted application number ---
+            // Format: SLR/AOT/YEAR/0001  (yearly reset)
+            $year   = date('Y');
+            $prefix = "SLR/AOT/{$year}/";
+
+            $numStmt = $conn->prepare(
+                "SELECT application_no FROM applications
+                 WHERE application_no LIKE ?
+                 ORDER BY application_no DESC
+                 LIMIT 1
+                 FOR UPDATE"
+            );
+            $like = $prefix . '%';
+            $numStmt->bind_param("s", $like);
+            $numStmt->execute();
+            $lastRow = $numStmt->get_result()->fetch_assoc();
+            $numStmt->close();
+
+            $nextSeq = $lastRow
+                ? ((int)substr($lastRow['application_no'], -4)) + 1
+                : 1;
+
+            $applicationNo = $prefix . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
+            // Example output: SLR/AOT/2026/0001
             // --- Assign all POST values to variables ---
             $full_name = $_POST['full_name'];
             $initials = $_POST['initials'] ?? null;
@@ -327,10 +351,11 @@ class ApplicationController {
             $draftRow = $draftStmt->get_result()->fetch_assoc();
             $draftStmt->close();
 
-            if ($draftRow) {
+                        if ($draftRow) {
                 $applicationId = (int)$draftRow['id'];
                 $appSQL = "
                     UPDATE applications SET
+                        application_no = ?,
                         computer_no = ?, quarter_type = ?, application_date = CURDATE(),
                         applied_quarter_number = ?, applied_quarter_location = ?,
                         has_applicant_served_other_sub_dept = ?, has_applicant_service_breaks = ?,
@@ -343,7 +368,8 @@ class ApplicationController {
                 ";
                 $stmt = $conn->prepare($appSQL);
                 $stmt->bind_param(
-                    "ssssiiiiiiiiiis",
+                    "sssssiiiiiiiiiis",
+                    $applicationNo,
                     $computer_no_val,
                     $quarterType,
                     $quarterNumber,
@@ -362,10 +388,10 @@ class ApplicationController {
                 );
                 $stmt->execute();
                 $stmt->close();
-            } else {
+                        } else {
                 $appSQL = "
                     INSERT INTO applications (
-                        nic, computer_no, quarter_type, application_date,
+                        nic, application_no, computer_no, quarter_type, application_date,
                         applied_quarter_number, applied_quarter_location,
                         has_applicant_served_other_sub_dept, has_applicant_service_breaks,
                         does_applicant_have_children_residing, does_applicant_have_spouse_residing,
@@ -373,12 +399,13 @@ class ApplicationController {
                         does_applicant_have_disability, has_applicant_rejected_quarter_before,
                         has_applicant_applied_before, residence_type, form_language,
                         application_status, submit_status, status, application_submitted_at
-                    ) VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted', 'success', 'pending', NOW())
+                    ) VALUES (?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted', 'success', 'pending', NOW())
                 ";
                 $stmt = $conn->prepare($appSQL);
                 $stmt->bind_param(
-                    "sssssiiiiiiiiiss",
+                    "ssssssiiiiiiiiiss",
                     $nic,
+                    $applicationNo,
                     $computer_no_val,
                     $quarterType,
                     $quarterNumber,
@@ -617,7 +644,7 @@ class ApplicationController {
             // Commit transaction
             $conn->commit();
             $_SESSION['success_message'] = "Application submitted successfully!";
-            $appNo = sprintf('SLR/AOT/%s/%04d', date('Y'), $applicationId);
+            $appNo = $applicationNo;
             $successLang = $formLanguage;
             redirect('/application/success/' . $successLang . '?appNo=' . urlencode($appNo));
 
