@@ -11,12 +11,55 @@ if (session_status() === PHP_SESSION_NONE) {
 // pituwe naama (Page Title) sækasima
 $pageTitle = "Immediate Boss Dashboard - Sri Lanka Railways";
 
-// aadarshavata data
+// Calculate real dashboard stats from the database
+$conn = getDBConnection();
+
+// Total approval list = all applications that have reached or passed the IB stage
+// (i.e. submitted applications that are in the boss workflow, or beyond it)
+$totalStmt = $conn->query(
+    "SELECT COUNT(*) AS total
+     FROM applications
+     WHERE application_status IN ('submitted', 'pending_clerk', 'pending_super', 'approved', 'rejected')
+       AND boss_status IN ('pending', 'approved', 'rejected')"
+);
+$totalApprovals = (int)($totalStmt->fetch_assoc()['total'] ?? 0);
+$totalStmt->close();
+
+// Pending list = applications currently waiting for the Immediate Boss decision
+$pendingStmt = $conn->query(
+    "SELECT COUNT(*) AS total
+     FROM applications
+     WHERE boss_status = 'pending'
+       AND application_status = 'submitted'"
+);
+$pendingCount = (int)($pendingStmt->fetch_assoc()['total'] ?? 0);
+$pendingStmt->close();
+
+// Approved list = applications the Immediate Boss has approved
+$approvedStmt = $conn->query(
+    "SELECT COUNT(*) AS total
+     FROM applications
+     WHERE boss_status = 'approved'"
+);
+$approvedCount = (int)($approvedStmt->fetch_assoc()['total'] ?? 0);
+$approvedStmt->close();
+
+// Rejected list = applications the Immediate Boss has rejected
+$rejectedStmt = $conn->query(
+    "SELECT COUNT(*) AS total
+     FROM applications
+     WHERE boss_status = 'rejected'"
+);
+$rejectedCount = (int)($rejectedStmt->fetch_assoc()['total'] ?? 0);
+$rejectedStmt->close();
+
+$conn->close();
+
 $dashboardStats = [
-    'total_approvals' => 24,
-    'pending_list' => 8,
-    'approved_list' => 12,
-    'rejected_list' => 4
+    'total_approvals' => $totalApprovals,
+    'pending_list'    => $pendingCount,
+    'approved_list'   => $approvedCount,
+    'rejected_list'   => $rejectedCount
 ];
 
 $userData = [
