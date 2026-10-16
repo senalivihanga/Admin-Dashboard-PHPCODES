@@ -11,47 +11,28 @@ if (session_status() === PHP_SESSION_NONE) {
 // Page Title සකසීම[cite: 4]
 $pageTitle = "Pending Applications Log - Sri Lanka Railways";
 
-// Database configuration (ප්‍රධාන දත්ත සමුදාය සම්බන්ධතාවය)[cite: 4]
-$host = 'localhost';
-$db   = 'sri_lanka_railways'; 
-$user = 'root';
-$pass = '';
-$charset = 'utf8mb4';
-
-$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
-$options = [
-    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_EMULATE_PREPARES   => false,
-];
-
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
-
-try {
-    // Database connection උත්සාහය[cite: 4]
-    $pdo = new PDO($dsn, $user, $pass, $options);
-    
-    if ($search !== '') {
-        $stmt = $pdo->prepare("SELECT * FROM pending_applications WHERE nic LIKE ? OR name LIKE ? ORDER BY id DESC");
-        $stmt->execute(["%$search%", "%$search%"]);
-    } else {
-        $stmt = $pdo->query("SELECT * FROM pending_applications ORDER BY id DESC");
-    }
-    $pendingData = $stmt->fetchAll();
-
-} catch (\PDOException $e) {
-    // Database එක connect වී නොමැති නම් පෙන්වන Fallback array එක[cite: 4]
-    $pendingData = [
-        ['id' => 1, 'appNo' => 'SLR/AOT/2026/0006', 'nic' => '961234567V', 'compNo' => '115', 'name' => 'R. M. Rathnayake', 'desig' => 'Station Master', 'status' => 'Pending'],
-        ['id' => 2, 'appNo' => 'SLR/AOT/2026/0007', 'nic' => '934561239V', 'compNo' => '118', 'name' => 'T. S. Wickramasinghe', 'desig' => 'Guard', 'status' => 'Pending']
-    ];
-
-    if ($search !== '') {
-        $pendingData = array_filter($pendingData, function($item) use ($search) {
-            return stripos($item['nic'], $search) !== false || stripos($item['name'], $search) !== false;
-        });
-    }
+$conn = getDBConnection();
+$sql = "SELECT a.id, a.application_no, a.nic, a.computer_no, a.file_status,
+               u.name, u.applicant_designation
+        FROM applications AS a
+        INNER JOIN users AS u ON u.nic = a.nic
+        WHERE a.boss_status = 'approved'
+          AND a.file_status = 'pending'
+          AND a.is_resubmission = 0
+          AND a.application_status = 'pending_clerk'";
+if ($search !== '') {
+    $sql .= " AND (a.application_no LIKE ? OR a.nic LIKE ? OR a.computer_no LIKE ? OR u.name LIKE ?)";
+    $searchTerm = '%' . $search . '%';
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date ASC, a.id ASC');
+    $stmt->bind_param('ssss', $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+} else {
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date ASC, a.id ASC');
 }
+$stmt->execute();
+$pendingData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
 
 // Admin Header එක ඇතුළත් කිරීම[cite: 4]
 require_once __DIR__ . '/../layouts/admin_header.php';
@@ -299,14 +280,14 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                     <?php foreach ($pendingData as $index => $item): ?>
                         <tr>
                             <td><?php echo $index + 1; ?></td>
-                            <td><strong><?php echo htmlspecialchars($item['appNo'] ?? $item['app_no'] ?? ''); ?></strong></td>
+                            <td><strong><?php echo htmlspecialchars($item['application_no'] ?? (string)$item['id']); ?></strong></td>
                             <td><?php echo htmlspecialchars($item['nic'] ?? ''); ?></td>
-                            <td><?php echo htmlspecialchars($item['compNo'] ?? $item['comp_no'] ?? ''); ?></td>
+                            <td><?php echo htmlspecialchars($item['computer_no'] ?? ''); ?></td>
                             <td><?php echo htmlspecialchars($item['name'] ?? ''); ?></td>
-                            <td><?php echo htmlspecialchars($item['desig'] ?? ''); ?></td>
+                            <td><?php echo htmlspecialchars($item['applicant_designation'] ?? ''); ?></td>
                             <td>
                                 <span class="badge">
-                                    <i class="fa-solid fa-clock" title="Pending"></i>
+                                    <i class="fa-solid fa-clock" title="<?php echo htmlspecialchars(ucfirst($item['file_status'])); ?>"></i>
                                 </span>
                             </td>
                         </tr>

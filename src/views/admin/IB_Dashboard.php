@@ -439,6 +439,15 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                 <p>Review applications that were resubmitted by staff following previous rejections and feedback.</p>
                 <span class="tile-link-text">Open Resubmitted Queue <i class="fa-solid fa-arrow-right"></i></span>
             </a>
+
+            <a href="returned_list_IB.php" class="manage-tile">
+                <div class="manage-tile-header">
+                    <h4>Returned From Personal File</h4>
+                    <i class="fa-solid fa-rotate-left" style="color: #b45309;"></i>
+                </div>
+                <p>Applications the Personal File division rejected. Reject them to send back to the applicant, or return them to Personal File.</p>
+                <span class="tile-link-text">Open Returned Queue <i class="fa-solid fa-arrow-right"></i></span>
+            </a>
         </div>
 
     </div>

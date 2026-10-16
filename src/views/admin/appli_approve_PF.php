@@ -5,60 +5,68 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Initialize or update session data with 6 example applications[cite: 1]
-if (!isset($_SESSION['applications']) || !isset($_SESSION['applications'][0]['ibDesig']) || count($_SESSION['applications']) < 6) {
-    $_SESSION['applications'] = [
-        ['id' => 1, 'appNo' => 'SLR/AOT/2026/0001', 'nic' => '981234567V', 'compNo' => '101', 'name' => 'A. B. Perera', 'desig' => 'Station Master', 'ibDesig' => 'Chief Station Master', 'ibWorkplace' => 'Colombo Fort Railway Station'],
-        ['id' => 2, 'appNo' => 'SLR/AOT/2026/0002', 'nic' => '957891234V', 'compNo' => '102', 'name' => 'K. D. Silva', 'desig' => 'Signal Inspector', 'ibDesig' => 'District Signal Engineer', 'ibWorkplace' => 'Maradana Signaling Dept'],
-        ['id' => 3, 'appNo' => 'SLR/AOT/2026/0003', 'nic' => '923456789V', 'compNo' => '103', 'name' => 'M. N. Fernando', 'desig' => 'Locomotive Driver', 'ibDesig' => 'Chief Locomotive Driver', 'ibWorkplace' => 'Ratmalana Workshop'],
-        ['id' => 4, 'appNo' => 'SLR/AOT/2026/0004', 'nic' => '905678123V', 'compNo' => '104', 'name' => 'S. P. Wickramasinghe', 'desig' => 'Way Inspector', 'ibDesig' => 'Chief Engineer (Way & Works)', 'ibWorkplace' => 'Maradana Engineering Yard'],
-        ['id' => 5, 'appNo' => 'SLR/AOT/2026/0005', 'nic' => '882345678V', 'compNo' => '105', 'name' => 'W. A. Jayasuriya', 'desig' => 'Telecommunication Tech', 'ibDesig' => 'Signal & Telecom Engineer', 'ibWorkplace' => 'Colombo Central S&T'],
-        ['id' => 6, 'appNo' => 'SLR/AOT/2026/0006', 'nic' => '941122334V', 'compNo' => '106', 'name' => 'P. R. Gunawardena', 'desig' => 'Guard', 'ibDesig' => 'Chief Transportation Supt', 'ibWorkplace' => 'Badulla Railway Station']
-    ];
-}
-
 $message = "";
 $messageType = "success";
+$conn = getDBConnection();
 
-// Handle Actions (Approve / Reject) via PHP[cite: 1]
-if (isset($_GET['action']) && isset($_GET['id'])) {
-    $action = $_GET['action'];
-    $id = intval($_GET['id']);
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
+    $reason = trim((string)($_POST['reason'] ?? ''));
 
-    if ($action === 'approve') {
-        foreach ($_SESSION['applications'] as $key => $app) {
-            if ($app['id'] === $id) {
-                unset($_SESSION['applications'][$key]);
-                $_SESSION['applications'] = array_values($_SESSION['applications']);
-                $message = "Application has been successfully approved by the system.";
-                $messageType = "success";
-                break;
-            }
+    if ($id && ($action === 'approve' || ($action === 'reject' && $reason !== ''))) {
+        $fileStatus = $action === 'approve' ? 'approved' : 'rejected';
+        $fileReason = $action === 'reject' ? $reason : null;
+        // Approve -> continues to Subject Clerk. Reject -> goes BACK TO THE IMMEDIATE BOSS (not the applicant).
+        $applicationStatus = $action === 'approve' ? 'pending_clerk' : 'returned_to_boss';
+        $stmt = $conn->prepare(
+            "UPDATE applications
+             SET file_status = ?, file_reason = ?, application_status = ?
+             WHERE id = ? AND boss_status = 'approved'
+               AND file_status = 'pending' AND is_resubmission = 0"
+        );
+        $stmt->bind_param('sssi', $fileStatus, $fileReason, $applicationStatus, $id);
+        $stmt->execute();
+
+                if ($stmt->affected_rows === 1) {
+            $message = $action === 'approve'
+                ? 'Application has been successfully approved.'
+                : 'Application rejected successfully.';
+            $messageType = $action === 'approve' ? 'success' : 'error';
+        } else {
+            $message = 'This application is no longer awaiting your decision.';
+            $messageType = 'error';
         }
+        $stmt->close();
     } elseif ($action === 'reject') {
-        $reason = isset($_GET['reason']) ? trim($_GET['reason']) : '';
-        foreach ($_SESSION['applications'] as $key => $app) {
-            if ($app['id'] === $id) {
-                unset($_SESSION['applications'][$key]);
-                $_SESSION['applications'] = array_values($_SESSION['applications']);
-                $message = "Application rejected successfully. Reason: " . htmlspecialchars($reason);
-                $messageType = "error";
-                break;
-            }
-        }
+        $message = 'A rejection reason is required.';
+        $messageType = 'error';
     }
 }
 
-// Handle Search[cite: 1]
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
-$filteredApps = $_SESSION['applications'];
+$sql = "SELECT a.id, a.application_no, a.nic, a.computer_no, a.boss_status,
+               u.name, u.applicant_designation, u.applicant_current_work_station,
+               u.applicant_personal_file_office
+        FROM applications AS a
+        INNER JOIN users AS u ON u.nic = a.nic
+        WHERE a.boss_status = 'approved'
+          AND a.file_status = 'pending'
+          AND a.is_resubmission = 0
+          AND a.application_status = 'pending_clerk'";
+
 if ($search !== '') {
-    $filteredApps = array_filter($_SESSION['applications'], function($app) use ($search) {
-        $nic = $app['nic'] ?? '';
-        $name = $app['name'] ?? '';
-        return stripos($nic, $search) !== false || stripos($name, $search) !== false;
-    });
+    $sql .= " AND (a.application_no LIKE ? OR a.nic LIKE ? OR a.computer_no LIKE ? OR u.name LIKE ?)";
+    $searchTerm = '%' . $search . '%';
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date ASC, a.id ASC');
+    $stmt->bind_param('ssss', $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+} else {
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date ASC, a.id ASC');
 }
+$stmt->execute();
+$filteredApps = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
 
 $pageTitle = "Application Approval List - Sri Lanka Railways";
 require_once __DIR__ . '/../layouts/admin_header.php';
@@ -588,8 +596,8 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                             <th>Computer Number</th>
                             <th>Name</th>
                             <th>Designation</th>
-                            <th>IB Designation</th>
-                            <th>IB Workplace</th>
+                            <th>Current Work Station</th>
+                            <th>Personal File Office</th>
                             <th>IB Status</th>
                             <th>View Application</th>
                             <th>Action</th>
@@ -604,18 +612,22 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                             <?php foreach ($filteredApps as $index => $item): ?>
                             <tr>
                                 <td><?php echo $index + 1; ?></td>
-                                <td><strong><?php echo htmlspecialchars($item['appNo'] ?? ''); ?></strong></td>
+                                <td><strong><?php echo htmlspecialchars($item['application_no'] ?? (string)$item['id']); ?></strong></td>
                                 <td><?php echo htmlspecialchars($item['nic'] ?? ''); ?></td>
-                                <td><?php echo htmlspecialchars($item['compNo'] ?? ''); ?></td>
+                                <td><?php echo htmlspecialchars($item['computer_no'] ?? ''); ?></td>
                                 <td><?php echo htmlspecialchars($item['name'] ?? ''); ?></td>
-                                <td><?php echo htmlspecialchars($item['desig'] ?? ''); ?></td>
-                                <td><?php echo htmlspecialchars($item['ibDesig'] ?? '-'); ?></td>
-                                <td><?php echo htmlspecialchars($item['ibWorkplace'] ?? '-'); ?></td>
-                                <td><span class="badge-ib-status" title="Approved"><i class="fa-solid fa-check"></i></span></td>
+                                <td><?php echo htmlspecialchars($item['applicant_designation'] ?? ''); ?></td>
+                                <td><?php echo htmlspecialchars($item['applicant_current_work_station'] ?? '-'); ?></td>
+                                <td><?php echo htmlspecialchars($item['applicant_personal_file_office'] ?? '-'); ?></td>
+                                <td><span class="badge-ib-status" title="<?php echo htmlspecialchars(ucfirst($item['boss_status'])); ?>"><i class="fa-solid fa-check"></i></span></td>
                                 <td><a href="view-application-details.php?id=<?php echo $item['id'] ?? 0; ?>" class="btn-view-symbol" title="View Application"><i class="fa-solid fa-eye"></i></a></td>
                                 <td>
                                     <div class="action-group">
-                                        <a href="?action=approve&id=<?php echo $item['id'] ?? 0; ?><?php echo !empty($search) ? '&search=' . urlencode($search) : ''; ?>" class="btn-action-symbol btn-approve" title="Approve"><i class="fa-solid fa-check"></i></a>
+                                        <form method="POST" action="" style="display:inline;">
+                                            <input type="hidden" name="id" value="<?php echo (int)$item['id']; ?>">
+                                            <input type="hidden" name="action" value="approve">
+                                            <button type="submit" class="btn-action-symbol btn-approve" title="Approve"><i class="fa-solid fa-check"></i></button>
+                                        </form>
                                         <button type="button" class="btn-action-symbol btn-reject" onclick="openRejectModal(<?php echo $item['id'] ?? 0; ?>)" title="Reject"><i class="fa-solid fa-xmark"></i></button>
                                     </div>
                                 </td>
@@ -632,12 +644,9 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     <div id="rejectModal" class="modal">
         <div class="modal-content">
             <h3>Provide Rejection Reason</h3>
-            <form id="rejectForm" method="GET" action="">
+            <form id="rejectForm" method="POST" action="">
                 <input type="hidden" name="action" value="reject">
                 <input type="hidden" name="id" id="rejectAppId">
-                <?php if (!empty($search)): ?>
-                <input type="hidden" name="search" value="<?php echo htmlspecialchars($search); ?>">
-                <?php endif; ?>
                 <textarea name="reason" id="rejectionReasonInput" placeholder="Enter reason for rejecting this application..." required></textarea>
                 <div class="modal-buttons">
                     <button type="button" class="btn-cancel" onclick="closeModal('rejectModal')">Cancel</button>

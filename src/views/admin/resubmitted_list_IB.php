@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             "UPDATE applications
              SET boss_status = ?, boss_reason = ?, application_status = ?
              WHERE id = ? AND boss_status = 'pending' AND application_status = 'submitted'
-               AND has_applicant_applied_before = 1"
+               AND is_resubmission = 1"
         );
         $stmt->bind_param('sssi', $bossStatus, $bossReason, $applicationStatus, $id);
         $stmt->execute();
@@ -47,6 +47,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ? 'Resubmitted application approved successfully.'
                 : 'Resubmitted application rejected successfully.';
             $alert_type = $action === 'approve' ? 'success' : 'error';
+            if ($action === 'reject') {
+                $notifStmt = $conn->prepare(
+                    "INSERT INTO notifications (nic, title, message, is_read)
+                     SELECT nic, 'Application Rejected',
+                            CONCAT('Your resubmitted application was rejected by the Immediate Boss. Reason: ', ?),
+                            0
+                     FROM applications WHERE id = ?"
+                );
+                $notifStmt->bind_param('si', $reason, $id);
+                $notifStmt->execute();
+                $notifStmt->close();
+            }
         } else {
             $alert_msg = 'This application is no longer awaiting your decision.';
             $alert_type = 'error';
@@ -65,7 +77,7 @@ $sql = "SELECT a.id, a.application_no, a.nic, a.computer_no,
         INNER JOIN users AS u ON u.nic = a.nic
         WHERE a.boss_status = 'pending'
           AND a.application_status = 'submitted'
-          AND a.has_applicant_applied_before = 1";
+          AND a.is_resubmission = 1";
 
 if ($searchQuery !== '') {
     $sql .= " AND (a.application_no LIKE ? OR a.nic LIKE ? OR a.computer_no LIKE ? OR u.name LIKE ?)";

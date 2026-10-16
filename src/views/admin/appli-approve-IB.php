@@ -37,16 +37,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $conn->prepare(
             "UPDATE applications
                SET boss_status = ?, boss_reason = ?, application_status = ?
-               WHERE id = ? AND boss_status = 'pending' AND application_status = 'submitted'"
+               WHERE id = ? AND boss_status = 'pending' AND application_status = 'submitted'
+               AND is_resubmission = 0"
         );
            $stmt->bind_param('sssi', $bossStatus, $bossReason, $applicationStatus, $id);
         $stmt->execute();
 
-        if ($stmt->affected_rows === 1) {
+            if ($stmt->affected_rows === 1) {
             $alert_msg = $action === 'approve'
                 ? 'Application approved successfully.'
                 : 'Application rejected successfully.';
             $alert_type = $action === 'approve' ? 'success' : 'error';
+
+            // Notify the applicant when rejected
+            if ($action === 'reject') {
+                $notifStmt = $conn->prepare(
+                    "INSERT INTO notifications (nic, title, message, is_read)
+                     SELECT nic, 'Application Rejected',
+                            CONCAT('Your application was rejected by the Immediate Boss. Reason: ', ?),
+                            0
+                     FROM applications WHERE id = ?"
+                );
+                $notifStmt->bind_param('si', $reason, $id);
+                $notifStmt->execute();
+                $notifStmt->close();
+            }
         } else {
             $alert_msg = 'This application is no longer awaiting your decision.';
             $alert_type = 'error';
@@ -65,7 +80,8 @@ $sql = "SELECT a.id, a.application_no, a.nic, a.computer_no, a.application_date,
         FROM applications AS a
         INNER JOIN users AS u ON u.nic = a.nic
         WHERE a.boss_status = 'pending'
-                    AND a.application_status = 'submitted'";
+                    AND a.application_status = 'submitted'
+          AND a.is_resubmission = 0";
 
 if ($searchQuery !== '') {
     $sql .= " AND (a.application_no LIKE ? OR a.nic LIKE ? OR a.computer_no LIKE ? OR u.name LIKE ?)";

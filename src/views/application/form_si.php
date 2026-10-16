@@ -8,6 +8,19 @@ $auth->requireLogin();
 $user = $_SESSION['user_name'] ?? 'User';
 $pageTitle = 'නිවාස අයදුම්පත්‍රය - සිංහල';
 
+require_once __DIR__ . '/../../models/Application.php';
+$resubmitApp = null;
+$resubmitId  = filter_input(INPUT_GET, 'resubmit', FILTER_VALIDATE_INT);
+if ($resubmitId) {
+    $appModel = new Application();
+    $row = $appModel->findById($resubmitId);
+    if ($row && $row['nic'] === $_SESSION['nic'] && $row['application_status'] === 'rejected') {
+        $resubmitApp = $row;
+    } else {
+        $resubmitId = null;
+    }
+}
+
 $dropdownModel = new DropdownModel();
 $quarterTypes = $dropdownModel->getQuarterTypes('si');
 $designations = $dropdownModel->getDesignations('si');
@@ -202,7 +215,8 @@ include __DIR__ . '/../layouts/header.php';
         <form id="railway-form" method="POST" action="<?php echo baseUrl('application/submit'); ?>" enctype="multipart/form-data">
             <input type="hidden" name="residence_type" value="<?= htmlspecialchars($_GET['type'] ?? ($_SESSION['residence_type'] ?? 'single'), ENT_QUOTES, 'UTF-8'); ?>">
             <input type="hidden" name="form_language" value="si">
-            
+            <input type="hidden" name="resubmit_id" value="<?= (int)$resubmitId ?>">
+
             <!-- ================= PAGE 1 ================= -->
             <div id="page-1" class="page-section">
                 <div>
@@ -223,7 +237,17 @@ include __DIR__ . '/../layouts/header.php';
                         <h1>ශ්‍රී ලංකා දුම්රිය දෙපාර්තමේන්තුව</h1>
                         <h2>දුම්රිය නිවාස අයදුම්පත්‍රය - ප්‍රවාහන උප දෙපාර්තමේන්තුව</h2>
                     </div>
-
+                    <?php if ($resubmitApp): ?>
+                    <div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:14px 18px;border-radius:8px;margin-bottom:20px;">
+                        <strong><i class="fa-solid fa-triangle-exclamation"></i> ඔබගේ පෙර අයදුම්පත ප්‍රතික්ෂේප විය.</strong><br>
+                        <span>ආසන්න අධිපතිගේ ප්‍රතික්ෂේප හේතුව:</span>
+                        <em><?= htmlspecialchars($resubmitApp['boss_reason'] ?? '—') ?></em>
+                        <?php if (!empty($resubmitApp['file_reason'])): ?>
+                        <br><span>පුද්ගලික ගොනුවේ ප්‍රතික්ෂේප හේතුව:</span>
+                        <em><?= htmlspecialchars($resubmitApp['file_reason']) ?></em>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
                     <div class="note-box">
                         <p><strong>සටහන :</strong> මෙහි සෑම වගන්තියක්ම නිවැරදිවත්, පැහැදිලිවත්, සම්පූර්ණ කළ යුතුය. අසම්පූර්ණ අයදුම්පත් ප්‍රතික්ෂේප කරනු ලැබේ.</p>
                     </div>
@@ -232,8 +256,13 @@ include __DIR__ . '/../layouts/header.php';
                         <div class="form-group">
                             <label>ස්ථානය :</label>
                             <select id="location-dropdown" name="applied_quarter_location" class="dropdown-select" onkeydown="handleEnter(event, 'house-number-dropdown')">
-                                <option value="" disabled selected>-- තෝරන්න --</option>
-                                <?php foreach ($quarterLocations as $opt): ?><option value="<?= htmlspecialchars($opt['name'], ENT_QUOTES, 'UTF-8'); ?>"><?= htmlspecialchars($opt['name'], ENT_QUOTES, 'UTF-8'); ?></option><?php endforeach; ?>
+                                <option value="" disabled <?= $resubmitApp ? '' : 'selected' ?>>-- Select --</option>
+                                <?php foreach ($quarterLocations as $opt): ?>
+                                    <option value="<?= htmlspecialchars($opt['name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                        <?= ($resubmitApp && ($resubmitApp['applied_quarter_location'] ?? '') === $opt['name']) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($opt['name'], ENT_QUOTES, 'UTF-8'); ?>
+                                    </option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="form-group">

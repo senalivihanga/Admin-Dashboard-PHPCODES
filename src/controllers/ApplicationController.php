@@ -213,30 +213,6 @@ class ApplicationController {
         $conn->begin_transaction();
 
         try {
-                        // --- Generate the formatted application number ---
-            // Format: SLR/AOT/YEAR/0001  (yearly reset)
-            $year   = date('Y');
-            $prefix = "SLR/AOT/{$year}/";
-
-            $numStmt = $conn->prepare(
-                "SELECT application_no FROM applications
-                 WHERE application_no LIKE ?
-                 ORDER BY application_no DESC
-                 LIMIT 1
-                 FOR UPDATE"
-            );
-            $like = $prefix . '%';
-            $numStmt->bind_param("s", $like);
-            $numStmt->execute();
-            $lastRow = $numStmt->get_result()->fetch_assoc();
-            $numStmt->close();
-
-            $nextSeq = $lastRow
-                ? ((int)substr($lastRow['application_no'], -4)) + 1
-                : 1;
-
-            $applicationNo = $prefix . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
-            // Example output: SLR/AOT/2026/0001
             // --- Assign all POST values to variables ---
             $full_name = $_POST['full_name'];
             $initials = $_POST['initials'] ?? null;
@@ -316,7 +292,7 @@ class ApplicationController {
             $stmt->execute();
             $stmt->close();
 
-            // 2. Promote this user's saved draft, or create a submitted row if needed.
+            // 2. Promote this user's saved draft / rejected row, or create a submitted row if needed.
             $quarterType = $_POST['house_type'] ?? '';
             $quarterNumber = $_POST['house_no'] ?? null;
             $quarterLocation = $_POST['location'] ?? null;
@@ -343,33 +319,98 @@ class ApplicationController {
             $rejectedBefore = isset($_POST['rejected_quarters']) && $_POST['rejected_quarters'] === 'yes' ? 1 : 0;
             $appliedBefore = isset($_POST['applied_before']) && $_POST['applied_before'] === 'yes' ? 1 : 0;
 
-            $draftStmt = $conn->prepare(
-                "SELECT id FROM applications WHERE nic = ? AND application_status = 'draft' ORDER BY id DESC LIMIT 1"
-            );
-            $draftStmt->bind_param("s", $nic);
-            $draftStmt->execute();
-            $draftRow = $draftStmt->get_result()->fetch_assoc();
-            $draftStmt->close();
+            // Priority 1: is this a resubmission of a rejected application?
+            $resubmitId = filter_input(INPUT_POST, 'resubmit_id', FILTER_VALIDATE_INT);
+            $isResubmit = 0;
+            $draftRow = null;
 
-                        if ($draftRow) {
+            if ($resubmitId) {
+                $rejStmt = $conn->prepare(
+                    "SELECT id, application_no FROM applications
+                     WHERE id = ? AND nic = ? AND application_status = 'rejected'
+                     LIMIT 1"
+                );
+                $rejStmt->bind_param("is", $resubmitId, $nic);
+                $rejStmt->execute();
+                $draftRow = $rejStmt->get_result()->fetch_assoc();
+                $rejStmt->close();
+                if ($draftRow) {
+                    $isResubmit = 1;
+                }
+            }
+
+            // Priority 2: otherwise use the latest draft
+            if (!$draftRow) {
+                $draftStmt = $conn->prepare(
+                    "SELECT id, application_no FROM applications
+                     WHERE nic = ? AND application_status = 'draft'
+                     ORDER BY id DESC LIMIT 1"
+                );
+                $draftStmt->bind_param("s", $nic);
+                $draftStmt->execute();
+                $draftRow = $draftStmt->get_result()->fetch_assoc();
+                $draftStmt->close();
+            }
+
+            if ($draftRow) {
                 $applicationId = (int)$draftRow['id'];
+
+                
+                // *** FIX: reuse the existing application number instead of generating a new one ***
+                // This is what makes the success page show the SAME number after a resubmit.
+                $applicationNo = $draftRow['application_no'];
+
+                // Safety: if for some reason the row had no number, generate one now
+                if (empty($applicationNo)) {
+                    $year   = date('Y');
+                    $prefix = "SLR/AOT/{$year}/";
+                    $numStmt = $conn->prepare(
+                        "SELECT application_no FROM applications
+                         WHERE application_no LIKE ?
+                         ORDER BY application_no DESC
+                         LIMIT 1
+                         FOR UPDATE"
+                    );
+                    $like = $prefix . '%';
+                    $numStmt->bind_param("s", $like);
+                    $numStmt->execute();
+                    $lastRow = $numStmt->get_result()->fetch_assoc();
+                    $numStmt->close();
+
+                    $nextSeq = $lastRow
+                        ? ((int)substr($lastRow['application_no'], -4)) + 1
+                        : 1;
+
+                    $applicationNo = $prefix . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
+
+                    // Save it back so the row is consistent
+                    $saveNo = $conn->prepare("UPDATE applications SET application_no = ? WHERE id = ?");
+                    $saveNo->bind_param("si", $applicationNo, $applicationId);
+                    $saveNo->execute();
+                    $saveNo->close();
+                }
+
                 $appSQL = "
                     UPDATE applications SET
-                        application_no = ?,
                         computer_no = ?, quarter_type = ?, application_date = CURDATE(),
                         applied_quarter_number = ?, applied_quarter_location = ?,
                         has_applicant_served_other_sub_dept = ?, has_applicant_service_breaks = ?,
                         does_applicant_have_children_residing = ?, does_applicant_have_spouse_residing = ?,
                         is_applicant_spouse_gov_employee = ?, is_applicant_currently_renting = ?,
                         does_applicant_have_disability = ?, has_applicant_rejected_quarter_before = ?,
-                        has_applicant_applied_before = ?, application_status = 'submitted',
-                        submit_status = 'success', status = 'pending', application_submitted_at = NOW()
-                    WHERE id = ? AND nic = ? AND application_status = 'draft'
+                        has_applicant_applied_before = ?,
+                        boss_status = 'pending', boss_reason = NULL,
+                        file_status = 'pending', file_reason = NULL,
+                        clerk_status = 'pending', clerk_reason = NULL,
+                        final_status = 'pending', final_reason = NULL,
+                        branch_status = 'pending',
+                        application_status = 'submitted', submit_status = 'success',
+                        status = 'pending', application_submitted_at = NOW()
+                    WHERE id = ? AND nic = ? AND application_status IN ('draft','rejected')
                 ";
                 $stmt = $conn->prepare($appSQL);
                 $stmt->bind_param(
-                    "sssssiiiiiiiiiis",
-                    $applicationNo,
+                    "ssssiiiiiiiiiis",
                     $computer_no_val,
                     $quarterType,
                     $quarterNumber,
@@ -388,7 +429,53 @@ class ApplicationController {
                 );
                 $stmt->execute();
                 $stmt->close();
-                        } else {
+
+                // Mark this as a resubmission so it shows in the IB / PF "Resubmitted" lists (and not in the new-application lists).
+                if ($isResubmit) {
+                    $flagStmt = $conn->prepare("UPDATE applications SET is_resubmission = 1 WHERE id = ? AND nic = ?");
+                    $flagStmt->bind_param("is", $applicationId, $nic);
+                    $flagStmt->execute();
+                    $flagStmt->close();
+                }
+
+                // On a resubmit, wipe the old child-detail rows so we insert fresh copies.
+                if ($isResubmit) {
+                    $conn->query("DELETE FROM other_sub_departments_served WHERE application_id = " . (int)$applicationId);
+                    $conn->query("DELETE FROM service_breaks WHERE application_id = " . (int)$applicationId);
+                    $conn->query("DELETE FROM children_details WHERE application_id = " . (int)$applicationId);
+                    $conn->query("DELETE FROM spouse_details WHERE application_id = " . (int)$applicationId);
+                    $conn->query("DELETE FROM permanent_residence_details WHERE application_id = " . (int)$applicationId);
+                    $conn->query("DELETE FROM rented_house_details WHERE application_id = " . (int)$applicationId);
+                    $conn->query("DELETE FROM disability_medical_details WHERE application_id = " . (int)$applicationId);
+                    $conn->query("DELETE FROM previous_quarter_details WHERE application_id = " . (int)$applicationId);
+                    $conn->query("DELETE FROM declaration_details WHERE application_id = " . (int)$applicationId);
+                }
+            } else {
+                // --- Generate the formatted application number (only for brand-new apps) ---
+                // Format: SLR/AOT/YEAR/0001  (yearly reset)
+                $year   = date('Y');
+                $prefix = "SLR/AOT/{$year}/";
+
+                $numStmt = $conn->prepare(
+                    "SELECT application_no FROM applications
+                     WHERE application_no LIKE ?
+                     ORDER BY application_no DESC
+                     LIMIT 1
+                     FOR UPDATE"
+                );
+                $like = $prefix . '%';
+                $numStmt->bind_param("s", $like);
+                $numStmt->execute();
+                $lastRow = $numStmt->get_result()->fetch_assoc();
+                $numStmt->close();
+
+                $nextSeq = $lastRow
+                    ? ((int)substr($lastRow['application_no'], -4)) + 1
+                    : 1;
+
+                $applicationNo = $prefix . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
+                // Example output: SLR/AOT/2026/0001
+
                 $appSQL = "
                     INSERT INTO applications (
                         nic, application_no, computer_no, quarter_type, application_date,
@@ -551,21 +638,24 @@ class ApplicationController {
             $stmt->execute();
             $stmt->close();
 
-            $positionStmt = $conn->prepare("SELECT COUNT(*) + 1 AS next_position FROM waiting_list WHERE quarter_type = ?");
-            $positionStmt->bind_param("s", $quarterType);
-            $positionStmt->execute();
-            $waitingListNo = (int)$positionStmt->get_result()->fetch_assoc()['next_position'];
-            $positionStmt->close();
+            if (!$isResubmit) {
+                // Brand-new application → add to waiting list
+                $positionStmt = $conn->prepare("SELECT COUNT(*) + 1 AS next_position FROM waiting_list WHERE quarter_type = ?");
+                $positionStmt->bind_param("s", $quarterType);
+                $positionStmt->execute();
+                $waitingListNo = (int)$positionStmt->get_result()->fetch_assoc()['next_position'];
+                $positionStmt->close();
 
-            $waitingStmt = $conn->prepare("INSERT INTO waiting_list (nic, position, quarter_type, applied_date) VALUES (?, ?, ?, CURDATE())");
-            $waitingStmt->bind_param("sis", $nic, $waitingListNo, $quarterType);
-            $waitingStmt->execute();
-            $waitingStmt->close();
+                $waitingStmt = $conn->prepare("INSERT INTO waiting_list (nic, position, quarter_type, applied_date) VALUES (?, ?, ?, CURDATE())");
+                $waitingStmt->bind_param("sis", $nic, $waitingListNo, $quarterType);
+                $waitingStmt->execute();
+                $waitingStmt->close();
 
-            $applicationListStmt = $conn->prepare("UPDATE applications SET waiting_list_no = ? WHERE id = ?");
-            $applicationListStmt->bind_param("ii", $waitingListNo, $applicationId);
-            $applicationListStmt->execute();
-            $applicationListStmt->close();
+                $applicationListStmt = $conn->prepare("UPDATE applications SET waiting_list_no = ? WHERE id = ?");
+                $applicationListStmt->bind_param("ii", $waitingListNo, $applicationId);
+                $applicationListStmt->execute();
+                $applicationListStmt->close();
+            }
 
             // 8. Rented house details
             if ($isRenting) {
