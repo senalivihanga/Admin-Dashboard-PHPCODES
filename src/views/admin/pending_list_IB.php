@@ -27,7 +27,8 @@ $sql = "SELECT a.id, a.application_no, a.nic, a.computer_no, a.boss_status,
         FROM applications AS a
         INNER JOIN users AS u ON u.nic = a.nic
         WHERE a.boss_status = 'pending'
-          AND a.application_status = 'submitted'";
+          AND a.application_status = 'submitted'
+          AND a.is_resubmission = 0";
 
 if ($searchVal !== '') {
     $sql .= " AND (a.application_no LIKE ? OR a.nic LIKE ? OR a.computer_no LIKE ? OR u.name LIKE ?)";

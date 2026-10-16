@@ -7,6 +7,19 @@ $auth->requireLogin();
 $user = $_SESSION['user_name'] ?? 'User';
 $pageTitle = 'Railway Quarters Application Form - English';
 
+require_once __DIR__ . '/../../models/Application.php';
+$resubmitApp = null;
+$resubmitId  = filter_input(INPUT_GET, 'resubmit', FILTER_VALIDATE_INT);
+if ($resubmitId) {
+    $appModel = new Application();
+    $row = $appModel->findById($resubmitId);
+    if ($row && $row['nic'] === $_SESSION['nic'] && $row['application_status'] === 'rejected') {
+        $resubmitApp = $row;
+    } else {
+        $resubmitId = null;
+    }
+}
+
 $dropdownModel = new DropdownModel();
 $quarterTypes = $dropdownModel->getQuarterTypes('en');
 $designations = $dropdownModel->getDesignations('en');
@@ -197,7 +210,8 @@ include __DIR__ . '/../layouts/header.php';
         <form id="railway-form" method="POST" action="<?php echo baseUrl('application/submit'); ?>" enctype="multipart/form-data">
             <input type="hidden" name="residence_type" value="<?= htmlspecialchars($_GET['type'] ?? ($_SESSION['residence_type'] ?? 'single'), ENT_QUOTES, 'UTF-8'); ?>">
             <input type="hidden" name="form_language" value="en">
-            
+            <input type="hidden" name="resubmit_id" value="<?= (int)$resubmitId ?>">
+
             <!-- ================= PAGE 1 ================= -->
             <div id="page-1" class="page-section">
                 <div>
@@ -219,6 +233,17 @@ include __DIR__ . '/../layouts/header.php';
                         <h1>Sri Lanka Railways</h1>
                         <h2>Application for Railway Quarters - Transportation Sub-Department</h2>
                     </div>
+                    <?php if ($resubmitApp): ?>
+                    <div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:14px 18px;border-radius:8px;margin-bottom:20px;">
+                        <strong><i class="fa-solid fa-triangle-exclamation"></i> Your previous application was rejected.</strong><br>
+                        <span>Reason from Immediate Boss:</span>
+                        <em><?= htmlspecialchars($resubmitApp['boss_reason'] ?? '—') ?></em>
+                        <?php if (!empty($resubmitApp['file_reason'])): ?>
+                        <br><span>Reason from Personal File:</span>
+                        <em><?= htmlspecialchars($resubmitApp['file_reason']) ?></em>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
 
                     <div class="note-box">
                         <p><strong>Note :</strong> Every section herein must be filled accurately, clearly, and completely. Incomplete applications will be rejected.</p>
@@ -228,8 +253,13 @@ include __DIR__ . '/../layouts/header.php';
                         <div class="form-group">
                             <label>Location :</label>
                             <select id="location-dropdown" name="applied_quarter_location" class="dropdown-select" onkeydown="handleEnter(event, 'house-number-dropdown')">
-                                <option value="" disabled selected>-- Select --</option>
-                                <?php foreach ($quarterLocations as $opt): ?><option value="<?= htmlspecialchars($opt['name'], ENT_QUOTES, 'UTF-8'); ?>"><?= htmlspecialchars($opt['name'], ENT_QUOTES, 'UTF-8'); ?></option><?php endforeach; ?>
+                                <option value="" disabled <?= $resubmitApp ? '' : 'selected' ?>>-- Select --</option>
+                                <?php foreach ($quarterLocations as $opt): ?>
+                                    <option value="<?= htmlspecialchars($opt['name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                        <?= ($resubmitApp && ($resubmitApp['applied_quarter_location'] ?? '') === $opt['name']) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($opt['name'], ENT_QUOTES, 'UTF-8'); ?>
+                                    </option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="form-group">
@@ -247,9 +277,12 @@ include __DIR__ . '/../layouts/header.php';
                         <div class="form-group">
                             <label for="house-type">Type of Quarter Applied For :</label>
                             <select id="house-type" name="quarter_type" class="dropdown-select" onkeydown="handleEnter(event, 'full_name')">
-                                <option value="" disabled selected>-- Select --</option>
+                                <option value="" disabled <?= $resubmitApp ? '' : 'selected' ?>>-- Select --</option>
                                 <?php foreach ($quarterTypes as $quarterType): ?>
-                                    <option value="<?= htmlspecialchars($quarterType['name'], ENT_QUOTES, 'UTF-8'); ?>"><?= htmlspecialchars($quarterType['name'], ENT_QUOTES, 'UTF-8'); ?></option>
+                                    <option value="<?= htmlspecialchars($quarterType['name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                        <?= ($resubmitApp && ($resubmitApp['quarter_type'] ?? '') === $quarterType['name']) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($quarterType['name'], ENT_QUOTES, 'UTF-8'); ?>
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>

@@ -314,7 +314,37 @@ include __DIR__ . '/../layouts/header.php';
                         </div>
                     </div>
                 </div>
-
+                                <?php
+                $appStatus = $application['application_status'] ?? '';
+                if ($appStatus === 'rejected'):
+                    $langKey = $application['form_language'] ?? 'en';
+                    $formPath = ($langKey === 'single_residence')
+                        ? 'application/form/si'
+                        : 'application/form/en';
+                ?>
+                <div class="mt-8 p-6 border-2 border-rose-300 bg-rose-50 rounded-xl">
+                    <div class="text-center">
+                        <h3 class="text-lg font-bold text-rose-800 mb-2">
+                            <i class="fa-solid fa-triangle-exclamation mr-2"></i>
+                            Your application was rejected
+                        </h3>
+                        <p class="text-sm text-rose-700 mb-1">Reason from Immediate Boss:</p>
+                        <p class="text-sm text-rose-900 italic mb-5">
+                            <?= htmlspecialchars($application['boss_reason'] ?? '—') ?>
+                        </p>
+                        <?php if (!empty($application['file_reason'])): ?>
+                        <p class="text-sm text-rose-700 mb-1">Reason from Personal File:</p>
+                        <p class="text-sm text-rose-900 italic mb-5"><?= htmlspecialchars($application['file_reason']) ?></p>
+                        <?php endif; ?>
+                        <a href="<?= htmlspecialchars(baseUrl($formPath . '?resubmit=' . (int)$application['id']), ENT_QUOTES, 'UTF-8') ?>"
+                           class="inline-flex items-center bg-rose-700 hover:bg-rose-800
+                                  text-white font-semibold px-6 py-3 rounded-lg shadow transition">
+                            <i class="fa-solid fa-rotate-right mr-2"></i>
+                            Fix &amp; Resubmit Application
+                        </a>
+                    </div>
+                </div>
+                <?php endif; ?>
             <?php else: ?>
                 <!-- No Application Found -->
                 <div class="text-center py-12 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-300">

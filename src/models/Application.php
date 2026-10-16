@@ -105,7 +105,21 @@ class Application {
         return $application;
     }
     /** Save or update the current user's latest draft preference. */
-    public function savePreference($nic, $residenceType, $formLanguage = null) {
+        public function savePreference($nic, $residenceType, $formLanguage = null) {
+        // If a rejected application is waiting to be fixed, don't create a new draft.
+        $rejCheck = $this->conn->prepare(
+            "SELECT id FROM {$this->table}
+             WHERE nic = ? AND application_status = 'rejected'
+             ORDER BY id DESC LIMIT 1"
+        );
+        $rejCheck->bind_param("s", $nic);
+        $rejCheck->execute();
+        $rejRow = $rejCheck->get_result()->fetch_assoc();
+        $rejCheck->close();
+        if ($rejRow) {
+            return (int)$rejRow['id'];
+        }
+
         $stmt = $this->conn->prepare(
             "SELECT id FROM {$this->table} WHERE nic = ? AND application_status = 'draft' ORDER BY id DESC LIMIT 1"
         );
@@ -164,6 +178,37 @@ class Application {
         $stmt->close();
         return $row ?: null;
     }
+
+        /**
+     * Find an application by its primary key (used for resubmission).
+     */
+    public function findById($id) {
+        $stmt = $this->conn->prepare(
+            "SELECT * FROM {$this->table} WHERE id = ? LIMIT 1"
+        );
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $row ?: null;
+    }
+
+    /**
+     * Find the latest rejected application for a NIC.
+     */
+    public function findRejectedByNic($nic) {
+        $stmt = $this->conn->prepare(
+            "SELECT * FROM {$this->table}
+             WHERE nic = ? AND application_status = 'rejected'
+             ORDER BY id DESC LIMIT 1"
+        );
+        $stmt->bind_param("s", $nic);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $row ?: null;
+    }
+
     public function __destruct() {
         if ($this->conn) {
             $this->conn->close();

@@ -11,11 +11,29 @@ if (session_status() === PHP_SESSION_NONE) {
 // පිටුවේ නාමය (Page Title) සැකසීම
 $pageTitle = "Personal File Dashboard - Sri Lanka Railways";
 
-// Dynamic variables for statistics and user profile
-$total_approvals = 24;
-$pending_count = 8;
-$approved_count = 12;
-$rejected_count = 4;
+$conn = getDBConnection();
+$statsResult = $conn->query(
+    "SELECT file_status, COUNT(*) AS total
+     FROM applications
+     WHERE boss_status = 'approved'
+       AND application_status IN ('pending_clerk', 'pending_super', 'approved', 'rejected')
+       AND file_status IN ('pending', 'approved', 'rejected')
+     GROUP BY file_status"
+);
+$dashboardStats = [
+    'pending' => 0,
+    'approved' => 0,
+    'rejected' => 0
+];
+while ($stat = $statsResult->fetch_assoc()) {
+    $dashboardStats[$stat['file_status']] = (int)$stat['total'];
+}
+$conn->close();
+
+$pending_count = $dashboardStats['pending'];
+$approved_count = $dashboardStats['approved'];
+$rejected_count = $dashboardStats['rejected'];
+$total_approvals = $pending_count + $approved_count + $rejected_count;
 
 $user_name = isset($_SESSION['user_name']) ? $_SESSION['user_name'] : 'Personal File';
 $user_role = isset($_SESSION['user_role']) ? trim($_SESSION['user_role']) : (isset($_SESSION['role']) ? trim($_SESSION['role']) : '');

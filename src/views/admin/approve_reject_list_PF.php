@@ -11,32 +11,38 @@ if (session_status() === PHP_SESSION_NONE) {
 // Page Title
 $pageTitle = "Approved & Rejected Applications Log - Sri Lanka Railways";
 
-// Sample log data (Replace with PDO/MySQLi database fetch in production)[cite: 4]
-$logData = [
-    [ 'id' => 1, 'appNo' => 'SLR/AOT/2026/0001', 'nic' => '981234567V', 'compNo' => '101', 'name' => 'A. B. Perera', 'desig' => 'Station Master', 'status' => 'Approved', 'reason' => '-' ],
-    [ 'id' => 2, 'appNo' => 'SLR/AOT/2026/0002', 'nic' => '957891234V', 'compNo' => '102', 'name' => 'K. D. Silva', 'desig' => 'Signal Inspector', 'status' => 'Rejected', 'reason' => 'Incomplete documentation regarding current technical qualifications.' ],
-    [ 'id' => 3, 'appNo' => 'SLR/AOT/2026/0003', 'nic' => '923456789V', 'compNo' => '105', 'name' => 'M. N. Fernando', 'desig' => 'Locomotive Driver', 'status' => 'Approved', 'reason' => '-' ],
-    [ 'id' => 4, 'appNo' => 'SLR/AOT/2026/0004', 'nic' => '904561238V', 'compNo' => '110', 'name' => 'S. K. Jayasundara', 'desig' => 'Way Inspector', 'status' => 'Rejected', 'reason' => 'Does not meet the minimum service requirement period.' ],
-    [ 'id' => 5, 'appNo' => 'SLR/AOT/2026/0005', 'nic' => '945612378V', 'compNo' => '112', 'name' => 'P. R. Gunawardena', 'desig' => 'Telecommunication Tech', 'status' => 'Approved', 'reason' => '-' ]
-];
+$activeTab = ($_GET['tab'] ?? 'approved') === 'rejected' ? 'rejected' : 'approved';
+$searchQuery = trim($_GET['search'] ?? '');
+$approvedList = [];
+$rejectedList = [];
+$conn = getDBConnection();
+$sql = "SELECT a.id, a.application_no, a.nic, a.computer_no, a.file_status,
+               a.file_reason, u.name, u.applicant_designation
+        FROM applications AS a
+        INNER JOIN users AS u ON u.nic = a.nic
+        WHERE a.file_status IN ('approved', 'rejected')";
 
-$activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'approved';
-$searchQuery = isset($_GET['search']) ? trim($_GET['search']) : '';
-
-// PHP filtering function[cite: 4]
-function filterData($data, $status, $query) {
-    return array_filter($data, function($item) use ($status, $query) {
-        if ($item['status'] !== $status) return false;
-        if ($query !== '') {
-            $q = strtolower($query);
-            return strpos(strtolower($item['nic']), $q) !== false || strpos(strtolower($item['name']), $q) !== false;
-        }
-        return true;
-    });
+if ($searchQuery !== '') {
+    $sql .= " AND (a.application_no LIKE ? OR a.nic LIKE ? OR a.computer_no LIKE ? OR u.name LIKE ?)";
+    $searchTerm = '%' . $searchQuery . '%';
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date DESC, a.id DESC');
+    $stmt->bind_param('ssss', $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+} else {
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date DESC, a.id DESC');
 }
+$stmt->execute();
+$logData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
 
-$approvedList = filterData($logData, 'Approved', $searchQuery);
-$rejectedList = filterData($logData, 'Rejected', $searchQuery);
+foreach ($logData as $item) {
+    $item['reason'] = $item['file_reason'] ?: '-';
+    if ($item['file_status'] === 'approved') {
+        $approvedList[] = $item;
+    } else {
+        $rejectedList[] = $item;
+    }
+}
 
 // Include Admin Header
 require_once __DIR__ . '/../layouts/admin_header.php';
@@ -444,11 +450,11 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                             <?php $i = 1; foreach ($approvedList as $item): ?>
                                 <tr>
                                     <td><?php echo $i++; ?></td>
-                                    <td><strong><?php echo htmlspecialchars($item['appNo']); ?></strong></td>
+                                    <td><strong><?php echo htmlspecialchars($item['application_no'] ?? (string)$item['id']); ?></strong></td>
                                     <td><?php echo htmlspecialchars($item['nic']); ?></td>
-                                    <td><?php echo htmlspecialchars($item['compNo']); ?></td>
+                                    <td><?php echo htmlspecialchars($item['computer_no']); ?></td>
                                     <td><?php echo htmlspecialchars($item['name']); ?></td>
-                                    <td><?php echo htmlspecialchars($item['desig']); ?></td>
+                                    <td><?php echo htmlspecialchars($item['applicant_designation'] ?? ''); ?></td>
                                     <td><span class="badge badge-approved"><i class="fa-solid fa-check" title="Approved"></i></span></td>
                                     <td><span class="reason-text"><?php echo htmlspecialchars($item['reason']); ?></span></td>
                                 </tr>
@@ -500,11 +506,11 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                             <?php $i = 1; foreach ($rejectedList as $item): ?>
                                 <tr>
                                     <td><?php echo $i++; ?></td>
-                                    <td><strong><?php echo htmlspecialchars($item['appNo']); ?></strong></td>
+                                    <td><strong><?php echo htmlspecialchars($item['application_no'] ?? (string)$item['id']); ?></strong></td>
                                     <td><?php echo htmlspecialchars($item['nic']); ?></td>
-                                    <td><?php echo htmlspecialchars($item['compNo']); ?></td>
+                                    <td><?php echo htmlspecialchars($item['computer_no']); ?></td>
                                     <td><?php echo htmlspecialchars($item['name']); ?></td>
-                                    <td><?php echo htmlspecialchars($item['desig']); ?></td>
+                                    <td><?php echo htmlspecialchars($item['applicant_designation'] ?? ''); ?></td>
                                     <td><span class="badge badge-rejected"><i class="fa-solid fa-xmark" title="Rejected"></i></span></td>
                                     <td><span class="reason-text"><?php echo htmlspecialchars($item['reason']); ?></span></td>
                                 </tr>

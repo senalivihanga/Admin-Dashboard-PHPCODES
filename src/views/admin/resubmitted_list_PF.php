@@ -11,74 +11,72 @@ if (session_status() === PHP_SESSION_NONE) {
 // Page Title සැකසීම
 $pageTitle = "Application Approval Resubmitted List - Sri Lanka Railways";
 
-// Initialize session data
-if (!isset($_SESSION['resubmittedData_v2'])) {
-    $_SESSION['resubmittedData_v2'] = [
-        [ 'id' => 1, 'appNo' => 'SLR/AOT/2026/0001', 'nic' => '981234567V', 'compNo' => '101', 'name' => 'A. B. Perera', 'desig' => 'Station Master', 'reason' => 'Missing required income proof document signature.' ],
-        [ 'id' => 2, 'appNo' => 'SLR/AOT/2026/0002', 'nic' => '957891234V', 'compNo' => '102', 'name' => 'K. D. Silva', 'desig' => 'Signal Inspector', 'reason' => 'Incorrect workplace address specified in section 3.' ],
-        [ 'id' => 3, 'appNo' => 'SLR/AOT/2026/0003', 'nic' => '923456789V', 'compNo' => '105', 'name' => 'M. N. Fernando', 'desig' => 'Locomotive Driver', 'reason' => 'Service period details need further verification.' ],
-        [ 'id' => 4, 'appNo' => 'SLR/AOT/2026/0004', 'nic' => '904567891V', 'compNo' => '108', 'name' => 'S. P. Jayasinghe', 'desig' => 'Train Guard', 'reason' => 'Updated service certificate stamp is missing.' ],
-        [ 'id' => 5, 'appNo' => 'SLR/AOT/2026/0005', 'nic' => '882345678V', 'compNo' => '112', 'name' => 'W. K. Rathnayake', 'desig' => 'Way Inspector', 'reason' => 'Medical fitness report needs renewal.' ],
-        [ 'id' => 6, 'appNo' => 'SLR/AOT/2026/0006', 'nic' => '963456789V', 'compNo' => '115', 'name' => 'P. L. Gunawardena', 'desig' => 'Booking Clerk', 'reason' => 'Bank account details verification pending.' ]
-    ];
-}
-
-if (!isset($_SESSION['approvedApplications'])) {
-    $_SESSION['approvedApplications'] = [];
-}
-if (!isset($_SESSION['rejectedApplications'])) {
-    $_SESSION['rejectedApplications'] = [];
-}
-
 $alertMessage = '';
 $alertType = '';
+$conn = getDBConnection();
 
-// Handle Form Actions (Approve / Reject via POST) matching IB logic[cite: 3]
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-    $actionId = intval($_POST['id'] ?? 0);
-    
-    if ($action === 'approve') {
-        foreach ($_SESSION['resubmittedData_v2'] as $key => $item) {
-            if ($item['id'] === $actionId) {
-                // Move item to approved applications session list[cite: 3]
-                $_SESSION['approvedApplications'][] = $item;
-                unset($_SESSION['resubmittedData_v2'][$key]);
-                break;
-            }
-        }
-        $_SESSION['resubmittedData_v2'] = array_values($_SESSION['resubmittedData_v2']);
-        $alertMessage = "Resubmitted application approved successfully and moved to Approved List.";
-        $alertType = "success";
-    } elseif ($action === 'reject') {
-        $reason = trim($_POST['reason'] ?? '');
-        if (!empty($reason)) {
-            foreach ($_SESSION['resubmittedData_v2'] as $key => $item) {
-                if ($item['id'] === $actionId) {
-                    $item['rejectionReason'] = $reason;
-                    $_SESSION['rejectedApplications'][] = $item;
-                    unset($_SESSION['resubmittedData_v2'][$key]);
-                    break;
-                }
-            }
-            $_SESSION['resubmittedData_v2'] = array_values($_SESSION['resubmittedData_v2']);
-            $alertMessage = "Application rejected and moved to Rejected List.";
-            $alertType = "error";
+    $actionId = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
+    $reason = trim((string)($_POST['reason'] ?? ''));
+
+    if ($actionId && ($action === 'approve' || ($action === 'reject' && $reason !== ''))) {
+                $fileStatus = $action === 'approve' ? 'approved' : 'rejected';
+        $fileReason = $action === 'reject' ? $reason : null;
+        // Approve -> continues to Subject Clerk. Reject -> goes BACK TO THE IMMEDIATE BOSS (not the applicant).
+        $applicationStatus = $action === 'approve' ? 'pending_clerk' : 'returned_to_boss';
+        $stmt = $conn->prepare(
+            "UPDATE applications
+             SET file_status = ?, file_reason = ?, application_status = ?
+             WHERE id = ? AND boss_status = 'approved'
+               AND file_status = 'pending' AND is_resubmission = 1"
+        );
+        $stmt->bind_param('sssi', $fileStatus, $fileReason, $applicationStatus, $actionId);
+        $stmt->execute();
+
+                if ($stmt->affected_rows === 1) {
+            $alertMessage = $action === 'approve'
+                ? 'Resubmitted application approved successfully.'
+                : 'Resubmitted application rejected successfully.';
+            $alertType = $action === 'approve' ? 'success' : 'error';
         } else {
-            $alertMessage = "Error: Please provide a valid rejection reason.";
-            $alertType = "error";
+            $alertMessage = 'This application is no longer awaiting your decision.';
+            $alertType = 'error';
         }
+        $stmt->close();
+    } elseif ($action === 'reject') {
+        $alertMessage = 'A rejection reason is required.';
+        $alertType = 'error';
     }
 }
 
 $searchQuery = isset($_GET['search']) ? trim($_GET['search']) : '';
+$sql = "SELECT a.id, a.application_no, a.nic, a.computer_no, a.file_reason,
+               a.boss_reason, u.name, u.applicant_designation
+        FROM applications AS a
+        INNER JOIN users AS u ON u.nic = a.nic
+        WHERE a.boss_status = 'approved'
+          AND a.file_status = 'pending'
+          AND a.is_resubmission = 1
+          AND a.application_status = 'pending_clerk'";
 
-// Filter data based on search query
-$filteredData = array_filter($_SESSION['resubmittedData_v2'], function($item) use ($searchQuery) {
-    if ($searchQuery === '') return true;
-    $q = strtolower($searchQuery);
-    return strpos(strtolower($item['nic']), $q) !== false || strpos(strtolower($item['name']), $q) !== false;
-});
+if ($searchQuery !== '') {
+    $sql .= " AND (a.application_no LIKE ? OR a.nic LIKE ? OR a.computer_no LIKE ? OR u.name LIKE ?)";
+    $searchTerm = '%' . $searchQuery . '%';
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date ASC, a.id ASC');
+    $stmt->bind_param('ssss', $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+} else {
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date ASC, a.id ASC');
+}
+$stmt->execute();
+$filteredData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
+
+foreach ($filteredData as &$item) {
+    $item['reason'] = $item['file_reason'] ?: ($item['boss_reason'] ?: '-');
+}
+unset($item);
 
 // Admin Header Include
 require_once __DIR__ . '/../layouts/admin_header.php';
@@ -558,11 +556,11 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                     <?php $i = 1; foreach ($filteredData as $item): ?>
                         <tr>
                             <td><?php echo $i++; ?></td>
-                            <td><strong><?php echo htmlspecialchars($item['appNo']); ?></strong></td>
+                            <td><strong><?php echo htmlspecialchars($item['application_no'] ?? (string)$item['id']); ?></strong></td>
                             <td><?php echo htmlspecialchars($item['nic']); ?></td>
-                            <td><?php echo htmlspecialchars($item['compNo']); ?></td>
+                            <td><?php echo htmlspecialchars($item['computer_no']); ?></td>
                             <td><?php echo htmlspecialchars($item['name']); ?></td>
-                            <td><?php echo htmlspecialchars($item['desig']); ?></td>
+                            <td><?php echo htmlspecialchars($item['applicant_designation'] ?? ''); ?></td>
                             <td><span class="reason-badge"><?php echo htmlspecialchars($item['reason']); ?></span></td>
                             <td><a href="view-application-details.php?id=<?php echo $item['id']; ?>" class="btn-view" title="View Application"><i class="fa-solid fa-eye"></i></a></td>
                             <td>
