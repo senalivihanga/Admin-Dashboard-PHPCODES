@@ -10,31 +10,21 @@ if (session_status() === PHP_SESSION_NONE) {
 
 $pageTitle = "View Allocated Quarter - Sri Lanka Railways Admin";
 
-// Database connection (MySQL / PDO)
-$host = 'localhost';
-$dbname = 'admin_dashboard_db';
-$username = 'root';
-$password = '';
+// Use the central database connection
+$conn = getDBConnection();
 
 $item = null;
-$recordId = isset($_GET['id']) ? intval($_GET['id']) : null;
+$recordId = isset($_GET['id']) ? intval($_GET['id']) : 0;
 
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-    if ($recordId !== null) {
-        $stmt = $pdo->prepare("SELECT * FROM allocated_quarters WHERE id = ?");
-        $stmt->execute([$recordId]);
-        $item = $stmt->fetch(PDO::FETCH_ASSOC);
-    }
-} catch (PDOException $e) {
-    // Fallback array data (ID 3 ekath ekata add karala thiyenne)
-   
-    if ($recordId !== null && isset($defaultAllocatedData[$recordId])) {
-        $item = $defaultAllocatedData[$recordId];
-    }
+if ($recordId > 0) {
+    $stmt = $conn->prepare("SELECT * FROM allocated_quarters WHERE id = ?");
+    $stmt->bind_param("i", $recordId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $item = $result->fetch_assoc();
+    $stmt->close();
 }
+$conn->close();
 
 // Admin Header eka include kirima
 require_once __DIR__ . '/../layouts/admin_header.php';
@@ -142,15 +132,15 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             <?php if ($item !== null): ?>
                 <div class="view-item"><div class="view-label">Auto ID</div><div class="view-value"><?php echo htmlspecialchars($item['id'] ?? $recordId); ?></div></div>
                 <div class="view-item"><div class="view-label">NIC</div><div class="view-value"><?php echo htmlspecialchars($item['nic'] ?? '-'); ?></div></div>
-                <div class="view-item"><div class="view-label">Computer No</div><div class="view-value"><?php echo htmlspecialchars($item['computerNo'] ?? '-'); ?></div></div>
-                <div class="view-item"><div class="view-label">Quarter No</div><div class="view-value"><?php echo htmlspecialchars($item['quarterNo'] ?? '-'); ?></div></div>
-                <div class="view-item"><div class="view-label">Quarter Name</div><div class="view-value"><?php echo htmlspecialchars($item['quarterName'] ?? '-'); ?></div></div>
-                <div class="view-item"><div class="view-label">Quarter Location</div><div class="view-value"><?php echo htmlspecialchars($item['quarterLocation'] ?? '-'); ?></div></div>
-                <div class="view-item"><div class="view-label">Quarter Type</div><div class="view-value"><?php echo htmlspecialchars($item['quarterType'] ?? '-'); ?></div></div>
-                <div class="view-item"><div class="view-label">Resident Name</div><div class="view-value"><?php echo htmlspecialchars($item['residentName'] ?? '-'); ?></div></div>
+                <div class="view-item"><div class="view-label">Computer No</div><div class="view-value"><?php echo htmlspecialchars($item['computer_no'] ?? '-'); ?></div></div>
+                <div class="view-item"><div class="view-label">Quarter No</div><div class="view-value"><?php echo htmlspecialchars($item['quarter_no'] ?? '-'); ?></div></div>
+                <div class="view-item"><div class="view-label">Quarter Name</div><div class="view-value"><?php echo htmlspecialchars($item['quarter_name'] ?? '-'); ?></div></div>
+                <div class="view-item"><div class="view-label">Quarter Location</div><div class="view-value"><?php echo htmlspecialchars($item['quarter_location'] ?? '-'); ?></div></div>
+                <div class="view-item"><div class="view-label">Quarter Type</div><div class="view-value"><?php echo htmlspecialchars($item['quarter_type'] ?? '-'); ?></div></div>
+                <div class="view-item"><div class="view-label">Resident Name</div><div class="view-value"><?php echo htmlspecialchars($item['resident_name'] ?? '-'); ?></div></div>
                 <div class="view-item"><div class="view-label">Designation</div><div class="view-value"><?php echo htmlspecialchars($item['designation'] ?? '-'); ?></div></div>
                 <div class="view-item"><div class="view-label">Workplace</div><div class="view-value"><?php echo htmlspecialchars($item['workplace'] ?? '-'); ?></div></div>
-                <div class="view-item"><div class="view-label">Allocated Date</div><div class="view-value"><?php echo htmlspecialchars($item['allocatedDate'] ?? '-'); ?></div></div>
+                <div class="view-item"><div class="view-label">Allocated Date</div><div class="view-value"><?php echo htmlspecialchars($item['allocated_date'] ?? '-'); ?></div></div>
                 <div class="view-item"><div class="view-label">Other</div><div class="view-value"><?php echo !empty($item['other']) ? htmlspecialchars($item['other']) : 'None'; ?></div></div>
             <?php else: ?>
                 <div class="error-msg">Record not found!</div>

@@ -1,6 +1,7 @@
 <?php
 /**
  * Quarters List - Sri Lanka Railways Admin
+ * DB-driven version
  */
 require_once __DIR__ . '/../../../config/config.php';
 
@@ -15,6 +16,18 @@ $userData = [
     'role' => 'Sri Lanka Railways - AOT',
     'initials' => 'SC'
 ];
+
+// --- Fetch all quarters from DB (ordered by id) ---
+$conn = getDBConnection();
+$quarters = [];
+$sql = "SELECT * FROM quarters ORDER BY id ASC";
+$result = $conn->query($sql);
+if ($result && $result->num_rows > 0) {
+    while ($row = $result->fetch_assoc()) {
+        $quarters[] = $row;
+    }
+}
+$conn->close();
 
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
@@ -404,7 +417,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 </style>
 
 <div class="container">
-    <?php if (isset($_SESSION['admin_name']) || (isset($_SESSION['role']) &&$_SESSION['role'] === 'admin')): ?>
+    <?php if (isset($_SESSION['admin_name']) || (isset($_SESSION['role']) && $_SESSION['role'] === 'admin')): ?>
         <a href="dashboard.php" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
     <?php else: ?>
         <div class="user-profile-wrapper">
@@ -467,7 +480,54 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                     </tr>
                 </thead>
                 <tbody id="quartersBody">
-                    <!-- Dynamic rows via JavaScript / localStorage -->
+                    <?php if (empty($quarters)): ?>
+                        <tr>
+                            <td colspan="13" style="text-align: center; padding: 30px; color: #64748b;">
+                                <i class="fa-solid fa-inbox" style="font-size: 2rem; display: block; margin-bottom: 10px;"></i>
+                                No quarters found. Click "Add Quarter" to create one.
+                            </td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($quarters as $index => $item): ?>
+                            <?php
+                                $electric = !empty($item['has_electricity']);
+                                $water    = !empty($item['has_water']);
+
+                                $electricBadge = $electric
+                                    ? '<span class="badge badge-active"><i class="fa-solid fa-bolt"></i> Available</span>'
+                                    : '<span class="badge badge-inactive"><i class="fa-solid fa-bolt"></i> Unavailable</span>';
+                                $waterBadge = $water
+                                    ? '<span class="badge badge-active"><i class="fa-solid fa-droplet"></i> Available</span>'
+                                    : '<span class="badge badge-inactive"><i class="fa-solid fa-droplet"></i> Unavailable</span>';
+                            ?>
+                            <tr>
+                                <td><?php echo $index + 1; ?></td>
+                                <td><?php echo htmlspecialchars($item['quarter_number'] ?? 'N/A'); ?></td>
+                                <td><?php echo htmlspecialchars($item['quarter_name'] ?? 'N/A'); ?></td>
+                                <td><?php echo htmlspecialchars($item['quarter_division'] ?? 'N/A'); ?></td>
+                                <td><?php echo htmlspecialchars($item['quarter_ownership'] ?? 'N/A'); ?></td>
+                                <td><?php echo htmlspecialchars($item['quarter_area'] ?? 'N/A'); ?></td>
+                                <td><?php echo htmlspecialchars($item['location_name'] ?? 'N/A'); ?></td>
+                                <td><?php echo htmlspecialchars($item['quarter_address'] ?? 'N/A'); ?></td>
+                                <td><?php echo htmlspecialchars($item['quarter_type'] ?? 'N/A'); ?></td>
+                                <td>Rs. <?php echo htmlspecialchars($item['quarter_assessment_rent'] ?? '0.00'); ?></td>
+                                <td><?php echo htmlspecialchars($item['quarter_status'] ?? 'N/A'); ?></td>
+                                <td>
+                                    <div class="facility-container">
+                                        <div class="facility-item"><span class="facility-label">Electricity</span><?php echo $electricBadge; ?></div>
+                                        <div class="facility-item"><span class="facility-label">Water</span><?php echo $waterBadge; ?></div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="action-cell">
+                                        <a href="view_quarters_list.php?id=<?php echo (int)$item['id']; ?>" class="action-btn btn-view" title="View"><i class="fa-solid fa-eye"></i></a>
+                                        <a href="edit_quarter.php?id=<?php echo (int)$item['id']; ?>" class="action-btn btn-edit" title="Edit"><i class="fa-solid fa-pen-to-square"></i></a>
+                                        <button class="action-btn btn-delete" onclick="promptDelete(<?php echo (int)$item['id']; ?>)" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                 </tbody>
             </table>
         </div>
@@ -533,106 +593,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         window.location.href = "login.php";
     }
 
-    const defaultData = [
-        {
-            quarterNum: "Q-01",
-            quarterName: "Bungalow A",
-            division: "Way & Works",
-            ownership: "Railway Department",
-            quarterArea: "1,450 sq.ft",
-            location: "Colombo",
-            address: "No. 12, Railway Avenue, Colombo 10",
-            quarterType: "Bungalows",
-            assessmentRent: "5,500.00",
-            status: "Under Maintenance",
-            electric: true,
-            water: true
-        },
-        {
-            quarterNum: "Q-02",
-            quarterName: "Type II House",
-            division: "Signal & Telecommunication",
-            ownership: "Railway Department",
-            quarterArea: "950 sq.ft",
-            location: "Kandy",
-            address: "No. 8, Peradeniya Road, Kandy",
-            quarterType: "Type II",
-            assessmentRent: "4,200.00",
-            status: "Available",
-            electric: true,
-            water: true
-        }
-    ];
-
-    function getStoredData() {
-        const data = localStorage.getItem('quartersData_v2');
-        let parsed = null;
-        try {
-            parsed = data ? JSON.parse(data) : null;
-        } catch (e) {
-            parsed = null;
-        }
-
-        if (!Array.isArray(parsed) || parsed.length === 0 || !parsed[0].quarterNum) {
-            localStorage.setItem('quartersData_v2', JSON.stringify(defaultData));
-            return [...defaultData];
-        }
-
-        return parsed;
-    }
-
-    function saveStoredData(data) {
-        localStorage.setItem('quartersData_v2', JSON.stringify(data));
-    }
-
-    window.addEventListener('DOMContentLoaded', () => { 
-        loadTableData(); 
-    });
-
-    function loadTableData() {
-        const tbody = document.getElementById('quartersBody');
-        tbody.innerHTML = '';
-        const data = getStoredData();
-
-        data.forEach((item, index) => {
-            const electricBadge = item.electric ? `<span class="badge badge-active"><i class="fa-solid fa-bolt"></i> Available</span>` : `<span class="badge badge-inactive"><i class="fa-solid fa-bolt"></i> Unavailable</span>`;
-            const waterBadge = item.water ? `<span class="badge badge-active"><i class="fa-solid fa-droplet"></i> Available</span>` : `<span class="badge badge-inactive"><i class="fa-solid fa-droplet"></i> Unavailable</span>`;
-
-            const tr = document.createElement('tr');
-            
-            const actionsHtml = `
-                <div class="action-cell">
-                    <a href="view_quarters_list.php?index=${index}" class="action-btn btn-view" title="View Details"><i class="fa-solid fa-eye"></i></a>
-                    <a href="edit_quarter.php?index=${index}" class="action-btn btn-edit" title="Edit"><i class="fa-solid fa-pen-to-square"></i></a>
-                    <button class="action-btn btn-delete" onclick="promptDelete(${index})" title="Delete"><i class="fa-solid fa-trash"></i></button>
-                </div>
-            `;
-
-            tr.innerHTML = `
-                <td>${index + 1}</td>
-                <td>${item.quarterNum || 'N/A'}</td>
-                <td>${item.quarterName || 'N/A'}</td>
-                <td>${item.division || 'N/A'}</td>
-                <td>${item.ownership || 'N/A'}</td>
-                <td>${item.quarterArea || 'N/A'}</td>
-                <td>${item.location || 'N/A'}</td>
-                <td>${item.address || 'N/A'}</td>
-                <td>${item.quarterType || 'N/A'}</td>
-                <td>Rs. ${item.assessmentRent || '0.00'}</td>
-                <td>${item.status || 'N/A'}</td>
-                <td>
-                    <div class="facility-container">
-                        <div class="facility-item"><span class="facility-label">Electricity</span>${electricBadge}</div>
-                        <div class="facility-item"><span class="facility-label">Water</span>${waterBadge}</div>
-                    </div>
-                </td>
-                <td>${actionsHtml}</td>
-            `;
-            
-            tbody.appendChild(tr);
-        });
-    }
-
+    // Search filter (client-side only)
     function searchTable() {
         const input = document.getElementById("searchInput");
         const filter = input.value.toLowerCase().trim();
@@ -680,32 +641,41 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         }
     }
 
-    let deleteTargetIndex = null;
-    function promptDelete(index) {
-        deleteTargetIndex = index;
+    // Delete confirmation
+    let deleteTargetId = null;
+    function promptDelete(id) {
+        deleteTargetId = id;
         document.getElementById('deleteModal').style.display = 'flex';
     }
 
     function closeDeleteModal() {
         document.getElementById('deleteModal').style.display = 'none';
-        deleteTargetIndex = null;
+        deleteTargetId = null;
     }
 
     document.getElementById('confirmDeleteBtn').addEventListener('click', () => {
-        if (deleteTargetIndex !== null) {
-            const data = getStoredData();
-            data.splice(deleteTargetIndex, 1);
-            saveStoredData(data);
-            loadTableData();
-            closeDeleteModal();
+        if (deleteTargetId !== null) {
+            // Redirect to delete handler (create delete_quarter.php to process deletion)
+            window.location.href = 'delete_quarter.php?id=' + deleteTargetId;
+        }
+    });
 
+    // Show toast if deletion success flag is set (e.g., via query param)
+    (function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('deleted') === '1') {
             const toast = document.getElementById('systemToast');
             toast.style.display = 'flex';
             setTimeout(() => {
                 toast.style.display = 'none';
             }, 2200);
+            // Clean the URL so refresh doesn't re-show
+            if (window.history.replaceState) {
+                const newUrl = window.location.pathname;
+                window.history.replaceState({}, document.title, newUrl);
+            }
         }
-    });
+    })();
 </script>
 
 <?php
