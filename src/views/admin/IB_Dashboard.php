@@ -19,7 +19,7 @@ $conn = getDBConnection();
 $totalStmt = $conn->query(
     "SELECT COUNT(*) AS total
      FROM applications
-     WHERE application_status IN ('submitted', 'pending_clerk', 'pending_super', 'approved', 'rejected')
+     WHERE application_status IN ('submitted', 'pending_clerk', 'pending_super', 'approved', 'rejected', 'returned_to_boss', 'returned_to_file')
        AND boss_status IN ('pending', 'approved', 'rejected')"
 );
 $totalApprovals = (int)($totalStmt->fetch_assoc()['total'] ?? 0);
@@ -39,7 +39,8 @@ $pendingStmt->close();
 $approvedStmt = $conn->query(
     "SELECT COUNT(*) AS total
      FROM applications
-     WHERE boss_status = 'approved'"
+     WHERE boss_status = 'approved'
+       AND application_status NOT IN ('returned_to_boss')"
 );
 $approvedCount = (int)($approvedStmt->fetch_assoc()['total'] ?? 0);
 $approvedStmt->close();
@@ -48,7 +49,8 @@ $approvedStmt->close();
 $rejectedStmt = $conn->query(
     "SELECT COUNT(*) AS total
      FROM applications
-     WHERE boss_status = 'rejected'"
+     WHERE boss_status = 'rejected'
+        OR application_status = 'returned_to_boss'"
 );
 $rejectedCount = (int)($rejectedStmt->fetch_assoc()['total'] ?? 0);
 $rejectedStmt->close();
@@ -438,15 +440,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                 </div>
                 <p>Review applications that were resubmitted by staff following previous rejections and feedback.</p>
                 <span class="tile-link-text">Open Resubmitted Queue <i class="fa-solid fa-arrow-right"></i></span>
-            </a>
-
-            <a href="returned_list_IB.php" class="manage-tile">
-                <div class="manage-tile-header">
-                    <h4>Returned From Personal File</h4>
-                    <i class="fa-solid fa-rotate-left" style="color: #b45309;"></i>
-                </div>
-                <p>Applications the Personal File division rejected. Reject them to send back to the applicant, or return them to Personal File.</p>
-                <span class="tile-link-text">Open Returned Queue <i class="fa-solid fa-arrow-right"></i></span>
             </a>
         </div>
 

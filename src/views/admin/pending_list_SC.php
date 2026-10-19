@@ -16,26 +16,24 @@ $userData = [
     'initials' => 'SC'
 ];
 
-$pendingData = [
-    [
-        'id' => 1,
-        'appNo' => 'SLR/AOT/2026/0006',
-        'nic' => '961234567V',
-        'compNo' => '115',
-        'name' => 'R. M. Rathnayake',
-        'desig' => 'Station Master',
-        'status' => 'Pending'
-    ],
-    [
-        'id' => 2,
-        'appNo' => 'SLR/AOT/2026/0007',
-        'nic' => '934561239V',
-        'compNo' => '118',
-        'name' => 'T. S. Wickramasinghe',
-        'desig' => 'Guard',
-        'status' => 'Pending'
-    ]
-];
+$conn = getDBConnection();
+$pendingResult = $conn->query(
+    "SELECT a.id, a.application_no AS appNo, a.nic, a.computer_no AS compNo,
+               u.name, COALESCE(u.applicant_designation, '') AS desig
+     FROM applications AS a
+     INNER JOIN users AS u ON u.nic = a.nic
+     WHERE a.boss_status = 'approved'
+          AND a.file_status = 'approved'
+          AND a.clerk_status = 'pending'
+          AND a.application_status = 'pending_clerk'
+     ORDER BY a.application_date ASC, a.id ASC"
+);
+$pendingData = $pendingResult->fetch_all(MYSQLI_ASSOC);
+foreach ($pendingData as &$pendingRow) {
+    $pendingRow['status'] = 'Pending';
+}
+unset($pendingRow);
+$conn->close();
 
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>

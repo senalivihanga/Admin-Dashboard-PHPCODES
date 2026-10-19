@@ -1,229 +1,185 @@
 <?php
 /**
- * Add New System User - Sri Lanka Railways
- * Inserts a staff user (role_id 2-7) into the real `users` table.
+ * Add New System User Page
  */
+
+// සැසිය දැනටමත් ආරම්භ වී ඇත්දැයි පරීක්ෂා කර බැලීම[cite: 18]
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-require_once __DIR__ . '/../../../config/config.php';
-
+// පිටු මාතෘකාව සැකසීම[cite: 18]
 $pageTitle = "Add System User - Sri Lanka Railways";
-$hide_admin_extras = true;
 
-$error_message = '';
+// ඩේටාබේස් සම්බන්ධතාවය (Database Connection)[cite: 18]
+$host = 'localhost';
+$db   = 'admin_dashboard_db';
+$user = 'root';
+$pass = '';
 
-// Form defaults
-$nic         = '';
-$computer_no = '';
-$full_name   = '';
-$email       = '';
-$phone       = '';
-$role_id     = '';
+try {
+    $pdo = new PDO("mysql:host=$host;dbname=$db;charset=utf8mb4", $user, $pass);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    die("Connection failed: " . $e->getMessage());
+}
 
-// Role map (matches src/helpers/roles.php; applicant excluded)
-$roles = [
-    2 => 'Super Admin',
-    3 => 'Immediate Boss',
-    4 => 'Personal File',
-    5 => 'Subject Clerk',
-    6 => 'Branch Officer',
-    7 => 'Final Approval',
-];
+$successMessage = "";
+$errorMessage = "";
+$computer_no = "";
 
+// ෆෝම් එක සබ්මිට් වූ විට ක්‍රියාත්මක වීම (Handle Form Submission)[cite: 18]
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $nic         = trim($_POST['nic'] ?? '');
-    $computer_no = trim($_POST['computer_no'] ?? '');
-    $full_name   = trim($_POST['full_name'] ?? '');
-    $email       = trim($_POST['email'] ?? '');
-    $phone       = trim($_POST['phone'] ?? '');
-    $role_id     = (int) ($_POST['role_id'] ?? 0);
-    $password    = $_POST['password'] ?? '';
-    $confirm     = $_POST['confirm_password'] ?? '';
+    $nic         = trim(isset($_POST['nic']) ? $_POST['nic'] : '');
+    $computer_no = trim(isset($_POST['computer_no']) ? $_POST['computer_no'] : '');
+    $fullName    = trim(isset($_POST['full_name']) ? $_POST['full_name'] : '');
+    $designation = trim(isset($_POST['designation']) ? $_POST['designation'] : '');
+    $role        = trim(isset($_POST['role']) ? $_POST['role'] : '');
+    $workplace   = trim(isset($_POST['workplace']) ? $_POST['workplace'] : '');
+    $email       = trim(isset($_POST['email']) ? $_POST['email'] : '');
+    $phone       = trim(isset($_POST['phone']) ? $_POST['phone'] : '');
+    $password    = isset($_POST['password']) ? $_POST['password'] : '';
+    $confirmPass = isset($_POST['confirm_password']) ? $_POST['confirm_password'] : '';
 
-    // Validation
-    if ($nic === '' || $computer_no === '' || $full_name === '' || $email === '' || $phone === '' || $password === '' || $role_id === 0) {
-        $error_message = 'Please fill in all required fields.';
-    } elseif ($password !== $confirm) {
-        $error_message = 'Passwords do not match! Please check again.';
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error_message = 'Please enter a valid email address.';
-    } elseif (!array_key_exists($role_id, $roles)) {
-        $error_message = 'Please select a valid staff role.';
+    // මුරපද දෙක සමාන දැයි පරීක්ෂා කිරීම (Check if passwords match)[cite: 18]
+    if ($password !== $confirmPass) {
+        $errorMessage = "Passwords do not match! Please check again.";
     } else {
-        $conn = getDBConnection();
+        // ආරක්ෂාව සඳහා මුරපදය Hash කිරීම (Hash password securely)[cite: 18]
+        $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
-        // Uniqueness
-        $chk = $conn->prepare("SELECT nic FROM users WHERE nic = ? LIMIT 1");
-        $chk->bind_param("s", $nic);
-        $chk->execute();
-        $nicTaken = $chk->get_result()->num_rows > 0;
-        $chk->close();
+        try {
+            // ඩේටාබේස් එකට අලුත් සිස්ටම් යූසර් ඇතුළත් කිරීම (Insert user into database)[cite: 18]
+            $stmt = $pdo->prepare("INSERT INTO system_users (nic, computer_no, full_name, designation, role, workplace, email, phone, password) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$nic, $computer_no, $fullName, $designation, $role, $workplace, $email, $phone, $hashedPassword]);
 
-        $chk2 = $conn->prepare("SELECT nic FROM users WHERE email = ? LIMIT 1");
-        $chk2->bind_param("s", $email);
-        $chk2->execute();
-        $emailTaken = $chk2->get_result()->num_rows > 0;
-        $chk2->close();
+            // දත්ත සාර්ථකව ඇතුළත් වූ පසු system-users.php වෙත ස්වයංක්‍රීයව යොමු කිරීම[cite: 18]
+            header("Location: system-users.php");
+            exit();
 
-        $chk3 = $conn->prepare("SELECT nic FROM users WHERE computer_number = ? LIMIT 1");
-        $chk3->bind_param("s", $computer_no);
-        $chk3->execute();
-        $compTaken = $chk3->get_result()->num_rows > 0;
-        $chk3->close();
-
-        if ($nicTaken) {
-            $error_message = 'This NIC is already registered.';
-        } elseif ($emailTaken) {
-            $error_message = 'This email is already registered.';
-        } elseif ($compTaken) {
-            $error_message = 'This computer number is already registered.';
-        } else {
-            $hash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
-
-            $insert = $conn->prepare(
-                "INSERT INTO users (nic, name, email, password, computer_number, mobile, role_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)"
-            );
-            $insert->bind_param("ssssssi", $nic, $full_name, $email, $hash, $computer_no, $phone, $role_id);
-
-            if ($insert->execute()) {
-                $insert->close();
-                $conn->close();
-                $_SESSION['flash_message'] = 'New system user added successfully!';
-                header('Location: ' . baseUrl('admin/system-users.php'));
-                exit;
-            } else {
-                $error_message = 'Insert failed: ' . $conn->error;
-                $insert->close();
-            }
+        } catch (PDOException $e) {
+            $errorMessage = "Error: " . $e->getMessage();
         }
-
-        $conn->close();
     }
 }
 
+// Admin Header ඇතුළත් කිරීම[cite: 18]
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
 
-<main class="flex-grow py-8 px-4">
-    <div class="max-w-4xl mx-auto w-full">
-        <a href="<?php echo baseUrl('admin/system-users.php'); ?>"
-           class="inline-flex items-center gap-2 text-[#7A1C1C] font-semibold mb-5 hover:underline">
+    <!-- ප්‍රධාන අන්තර්ගත කන්ටේනරය -->
+    <div class="container mx-auto px-4 py-8 max-w-4xl flex-grow">
+        <!-- පරිශීලක ලැයිස්තුව වෙත ආපසු යාමේ සබැඳිය (Back Link)[cite: 18] -->
+        <a href="system-users.php" class="inline-flex items-center gap-2 text-[#7A1C1C] font-semibold mb-5 hover:underline">
             <i class="fa-solid fa-arrow-left"></i> Back to System Users List
         </a>
 
         <div class="bg-white p-6 md:p-8 rounded-xl shadow-md border-t-4 border-[#7A1C1C]">
-            <h2 class="text-center text-black text-2xl md:text-3xl font-bold uppercase mb-6 tracking-wide">
-                Add New System User
-            </h2>
+            <h2 class="text-center text-black text-2xl md:text-3xl font-bold uppercase mb-6 tracking-wide">Add New System User</h2>
 
-            <?php if (!empty($error_message)): ?>
-                <div class="bg-red-100 text-red-700 p-3 rounded-lg mb-5 text-center font-semibold md:col-span-2">
-                    <i class="fa-solid fa-triangle-exclamation"></i> <?php echo htmlspecialchars($error_message); ?>
+            <!-- දෝෂ පණිවිඩය පෙන්වීම (Error Message)[cite: 18] -->
+            <?php if (!empty($errorMessage)): ?>
+                <div class="bg-[#fee2e2] text-[#991b1b] p-3 rounded-lg mb-5 text-center font-semibold md:col-span-2">
+                    <i class="fa-solid fa-triangle-exclamation"></i> <?php echo $errorMessage; ?>
                 </div>
             <?php endif; ?>
 
-            <form method="POST" action="" onsubmit="return validateForm(event)"
-                  class="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-                <div>
+            <!-- නව සිස්ටම් යූසර් ලියාපදිංචි කිරීමේ පෝරමය (Two Column Grid Layout)[cite: 18] -->
+            <form method="POST" action="" onsubmit="return validateForm(event)" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                <div class="mb-2">
                     <label class="block font-semibold mb-1.5 text-slate-800 text-sm">NIC Number</label>
-                    <input type="text" name="nic" value="<?php echo htmlspecialchars($nic); ?>" required
-                           placeholder="Enter NIC number"
-                           class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white">
+                    <input type="text" name="nic" class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white" placeholder="Enter NIC number" required>
                 </div>
 
-                <div>
+                <div class="mb-2">
                     <label class="block font-semibold mb-1.5 text-slate-800 text-sm">Computer Number</label>
-                    <input type="text" id="computerNumberInput" name="computer_no"
-                           value="<?php echo htmlspecialchars($computer_no); ?>"
-                           inputmode="numeric" pattern="[0-9]+" title="Enter digits only"
-                           placeholder="Enter Computer Number (e.g. 405)" required
-                           class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white">
+                    <input type="text" id="computerNumberInput" name="computer_no" value="<?php echo htmlspecialchars($computer_no); ?>" class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white" inputmode="numeric" pattern="[0-9]+" title="Enter digits only" placeholder="Enter Computer Number (e.g. 405)" required>
                 </div>
 
-                <div>
+                <div class="mb-2">
                     <label class="block font-semibold mb-1.5 text-slate-800 text-sm">Name</label>
-                    <input type="text" name="full_name" value="<?php echo htmlspecialchars($full_name); ?>" required
-                           placeholder="Enter your name"
-                           class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white">
+                    <input type="text" name="full_name" class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white" placeholder="Enter your name" required>
                 </div>
 
-                <div>
+                <div class="mb-2">
+                    <label class="block font-semibold mb-1.5 text-slate-800 text-sm">Designation</label>
+                    <input type="text" name="designation" class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white" placeholder="Enter designation" required>
+                </div>
+
+                <div class="mb-2">
                     <label class="block font-semibold mb-1.5 text-slate-800 text-sm">System Role</label>
-                    <select name="role_id" required
-                            class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white">
+                    <select name="role" class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white" required>
                         <option value="">-- Select System Role --</option>
-                        <?php foreach ($roles as $rid => $label): ?>
-                            <option value="<?php echo $rid; ?>" <?php echo ($role_id === $rid) ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($label); ?>
-                            </option>
-                        <?php endforeach; ?>
+                        <option value="Admin">Admin</option>
+                        <option value="Immediate Boss">Immediate Boss</option>
+                        <option value="Personal File">Personal File</option>
+                        <option value="Subject Clerk">Subject Clerk</option>
+                        <option value="Branch Officer">Branch Officer</option>
+                        <option value="Final Approval">Final Approval</option>
                     </select>
                 </div>
 
-                <div>
+                <div class="mb-2">
+                    <label class="block font-semibold mb-1.5 text-slate-800 text-sm">Current Workplace</label>
+                    <input type="text" name="workplace" class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white" placeholder="Enter current workplace" required>
+                </div>
+
+                <div class="mb-2">
                     <label class="block font-semibold mb-1.5 text-slate-800 text-sm">Email Address</label>
-                    <input type="email" name="email" value="<?php echo htmlspecialchars($email); ?>" required
-                           placeholder="Enter email address"
-                           class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white">
+                    <input type="email" name="email" class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white" placeholder="Enter email address" required>
                 </div>
 
-                <div>
+                <div class="mb-2">
                     <label class="block font-semibold mb-1.5 text-slate-800 text-sm">Phone Number</label>
-                    <input type="text" name="phone" value="<?php echo htmlspecialchars($phone); ?>" required
-                           placeholder="Enter phone number"
-                           class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white">
+                    <input type="text" name="phone" class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white" placeholder="Enter phone number" required>
                 </div>
 
-                <div>
+                <div class="mb-2">
                     <label class="block font-semibold mb-1.5 text-slate-800 text-sm">Password</label>
-                    <input type="password" id="password" name="password" required minlength="8"
-                           placeholder="Enter password"
-                           class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white">
+                    <input type="password" id="password" name="password" class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white" placeholder="Enter password" required>
                 </div>
 
-                <div>
+                <div class="mb-2">
                     <label class="block font-semibold mb-1.5 text-slate-800 text-sm">Confirm Password</label>
-                    <input type="password" id="confirmPassword" name="confirm_password" required minlength="8"
-                           placeholder="Re-enter password"
-                           class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white">
+                    <input type="password" id="confirmPassword" name="confirm_password" class="w-full p-2.5 border border-slate-300 rounded-md text-sm outline-none focus:border-[#7A1C1C] bg-white" placeholder="Re-enter password" required>
                 </div>
 
+                <!-- Submit Button එක තීරු දෙකම ආවරණය වන පරිදි සකසා ඇත -->
                 <div class="md:col-span-2 mt-2">
-                    <button type="submit"
-                            class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-4 rounded-md transition cursor-pointer">
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-4 rounded-md transition cursor-pointer">
                         <i class="fa-solid fa-save"></i> Save System User
                     </button>
                 </div>
             </form>
         </div>
     </div>
-</main>
 
-<script>
-    const computerInput = document.getElementById('computerNumberInput');
-    if (computerInput) {
-        computerInput.addEventListener('input', event => {
-            event.target.value = event.target.value.replace(/\D/g, '');
-        });
-    }
-
-    function validateForm(event) {
-        const p1 = document.getElementById('password').value;
-        const p2 = document.getElementById('confirmPassword').value;
-        if (p1 !== p2) {
-            alert("Passwords do not match! Please check again.");
-            document.getElementById('confirmPassword').focus();
-            event.preventDefault();
-            return false;
+    <script>
+        // පරිගණක අංකය සඳහා ඉලක්කම් පමණක් ඇතුළත් කිරීමට සැලැස්වීම[cite: 18]
+        const computerInput = document.getElementById('computerNumberInput');
+        if (computerInput) {
+            computerInput.addEventListener('input', event => {
+                event.target.value = event.target.value.replace(/\D/g, '');
+            });
         }
-        return true;
-    }
-</script>
+
+        // මුරපද දෙක සමාන දැයි පරීක්ෂා කිරීමේ JavaScript පරීක්ෂාව[cite: 18]
+        function validateForm(event) {
+            const passwordVal = document.getElementById('password').value;
+            const confirmPasswordVal = document.getElementById('confirmPassword').value;
+
+            if (passwordVal !== confirmPasswordVal) {
+                alert("Passwords do not match! Please check again.");
+                document.getElementById('confirmPassword').focus();
+                event.preventDefault();
+                return false;
+            }
+            return true;
+        }
+    </script>
 
 <?php
+// Admin Footer ඇතුළත් කිරීම[cite: 18]
 require_once __DIR__ . '/../layouts/admin_footer.php';
 ?>

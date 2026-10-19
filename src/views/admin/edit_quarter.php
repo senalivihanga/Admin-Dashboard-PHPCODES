@@ -16,90 +16,36 @@ $userData = [
     'initials' => 'SC'
 ];
 
-$error = '';
-
-$id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
-if (!$id) {
-    header('Location: ' . baseUrl('admin/quarters_list.php'));
-    exit;
-}
-
-$conn = getDBConnection();
-
-// Handle update
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $quarter_number          = trim($_POST['quarter_number']          ?? '');
-    $quarter_name            = trim($_POST['quarter_name']            ?? '');
-    $location_name           = trim($_POST['location_name']           ?? '');
-    $quarter_address         = trim($_POST['quarter_address']         ?? '');
-    $quarter_type            = trim($_POST['quarter_type']            ?? '');
-    $quarter_division        = trim($_POST['quarter_division']        ?? '');
-    $quarter_ownership       = trim($_POST['quarter_ownership']       ?? '');
-    $quarter_area            = trim($_POST['quarter_area']            ?? '');
-    $quarter_assessment_rent = (float)($_POST['quarter_assessment_rent'] ?? 0);
-    $quarter_status          = $_POST['quarter_status']               ?? 'Available';
-    $has_electricity         = isset($_POST['has_electricity']) ? 1 : 0;
-    $has_water               = isset($_POST['has_water'])       ? 1 : 0;
-
-    if ($quarter_number === '' || $location_name === '' || $quarter_type === '') {
-        $error = 'Quarter No., Location, and Quarter Type are required.';
-    } elseif (!in_array($quarter_status, ['Available', 'Occupied', 'Under Maintenance'], true)) {
-        $error = 'Please select a valid quarter status.';
-    } else {
-        $stmt = $conn->prepare(
-            "UPDATE quarters SET
-                quarter_number = ?, quarter_name = ?, location_name = ?, quarter_address = ?,
-                quarter_type = ?, quarter_division = ?, quarter_ownership = ?, quarter_area = ?,
-                quarter_assessment_rent = ?, quarter_status = ?,
-                has_electricity = ?, has_water = ?
-              WHERE id = ?"
-        );
-        $stmt->bind_param(
-            "ssssssssdsiii",
-            $quarter_number,
-            $quarter_name,
-            $location_name,
-            $quarter_address,
-            $quarter_type,
-            $quarter_division,
-            $quarter_ownership,
-            $quarter_area,
-            $quarter_assessment_rent,
-            $quarter_status,
-            $has_electricity,
-            $has_water,
-            $id
-        );
-
-        if ($stmt->execute()) {
-            $stmt->close();
-            $conn->close();
-            header('Location: ' . baseUrl('admin/quarters_list.php'));
-            exit;
-        }
-        $error = 'Update failed: ' . $conn->error;
-        $stmt->close();
-    }
-}
-
-// Fetch row
-$stmt = $conn->prepare(
-    "SELECT id, quarter_number, quarter_name, location_name, quarter_address,
-            quarter_type, quarter_division, quarter_ownership, quarter_area,
-            quarter_assessment_rent, is_active, quarter_status,
-            has_electricity, has_water, sort_order
-       FROM quarters WHERE id = ? LIMIT 1"
-);
-$stmt->bind_param("i", $id);
-$stmt->execute();
-$row = $stmt->get_result()->fetch_assoc();
-$stmt->close();
-$conn->close();
-
-if (!$row) {
-    header('Location: ' . baseUrl('admin/quarters_list.php'));
-    exit;
-}
+$quartersDatabase = [
+    [
+        'quarterNum' => 'Q-01',
+        'location' => 'Colombo',
+        'quarterName' => 'Bungalow A',
+        'division' => 'Way & Works',
+        'ownership' => 'Railway Department',
+        'quarterArea' => '1,450 sq.ft',
+        'address' => 'No. 12, Railway Avenue, Colombo 10',
+        'quarterType' => 'Bungalows',
+        'assessmentRent' => '5500.00',
+        'status' => 'Under Maintenance',
+        'electric' => true,
+        'water' => true
+    ],
+    [
+        'quarterNum' => 'Q-02',
+        'location' => 'Kandy',
+        'quarterName' => 'Type II House',
+        'division' => 'Signal & Telecommunication',
+        'ownership' => 'Railway Department',
+        'quarterArea' => '950 sq.ft',
+        'address' => 'No. 8, Peradeniya Road, Kandy',
+        'quarterType' => 'Type II',
+        'assessmentRent' => '4200.00',
+        'status' => 'Available',
+        'electric' => true,
+        'water' => true
+    ]
+];
 
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
@@ -281,15 +227,16 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         background-color: #5c1414; 
     }
 
-    .alert-error {
-        background-color: #fee2e2;
-        color: #991b1b;
-        border: 1px solid #fecaca;
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        text-align: center;
-        font-weight: 600;
+    #successAlert { 
+        display: none; 
+        background-color: #dcfce7; 
+        color: #166534; 
+        padding: 12px 20px; 
+        border-radius: 8px; 
+        margin-bottom: 20px; 
+        font-weight: 600; 
+        border: 1px solid #bbf7d0; 
+        text-align: center; 
     }
 
     .custom-modal {
@@ -389,91 +336,80 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
     <div class="card">
         <h2>Edit Quarter Record</h2>
+        
+        <div id="successAlert"><i class="fa-solid fa-circle-check"></i> Quarter record updated successfully!</div>
 
-        <?php if ($error): ?>
-            <div class="alert-error"><?php echo htmlspecialchars($error); ?></div>
-        <?php endif; ?>
-
-        <form method="POST">
+        <form id="editQuarterForm">
             <div class="form-row">
                 <div class="form-group">
-                    <label for="quarter_number">Quarter No.:</label>
-                    <input type="text" id="quarter_number" name="quarter_number" required
-                           value="<?php echo htmlspecialchars($row['quarter_number']); ?>">
+                    <label for="quarterNum">Quarter No.:</label>
+                    <input type="text" id="quarterNum" required>
                 </div>
                 <div class="form-group">
-                    <label for="quarter_name">Quarter Name:</label>
-                    <input type="text" id="quarter_name" name="quarter_name"
-                           value="<?php echo htmlspecialchars($row['quarter_name'] ?? ''); ?>">
+                    <label for="quarterName">Quarter Name:</label>
+                    <input type="text" id="quarterName">
                 </div>
             </div>
 
             <div class="form-row">
                 <div class="form-group">
-                    <label for="quarter_division">Quarter Division:</label>
-                    <input type="text" id="quarter_division" name="quarter_division"
-                           value="<?php echo htmlspecialchars($row['quarter_division'] ?? ''); ?>">
+                    <label for="division">Quarter Division:</label>
+                    <input type="text" id="division" required>
                 </div>
                 <div class="form-group">
-                    <label for="quarter_ownership">Ownership:</label>
-                    <input type="text" id="quarter_ownership" name="quarter_ownership"
-                           value="<?php echo htmlspecialchars($row['quarter_ownership'] ?? ''); ?>">
+                    <label for="ownership">Ownership:</label>
+                    <input type="text" id="ownership" required>
                 </div>
             </div>
 
             <div class="form-row">
                 <div class="form-group">
-                    <label for="quarter_area">Quarter Area (sq.ft):</label>
-                    <input type="text" id="quarter_area" name="quarter_area"
-                           value="<?php echo htmlspecialchars($row['quarter_area'] ?? ''); ?>">
+                    <label for="quarterArea">Quarter Area (sq.ft):</label>
+                    <input type="text" id="quarterArea" required>
                 </div>
                 <div class="form-group">
-                    <label for="location_name">Quarter Location:</label>
-                    <input type="text" id="location_name" name="location_name" required
-                           value="<?php echo htmlspecialchars($row['location_name']); ?>">
+                    <label for="location">Quarter Location:</label>
+                    <input type="text" id="location" required>
                 </div>
             </div>
 
             <div class="form-group">
-                <label for="quarter_address">Address:</label>
-                <input type="text" id="quarter_address" name="quarter_address"
-                       value="<?php echo htmlspecialchars($row['quarter_address'] ?? ''); ?>">
+                <label for="address">Address:</label>
+                <input type="text" id="address">
             </div>
 
             <div class="form-row">
                 <div class="form-group">
-                    <label for="quarter_type">Quarter Type:</label>
-                    <select id="quarter_type" name="quarter_type" required>
+                    <label for="quarterType">Quarter Type:</label>
+                    <select id="quarterType" required>
                         <option value="">-- Select Quarter Type --</option>
-                        <option value="Bungalows" <?php echo ($row['quarter_type'] ?? '') === 'Bungalows' ? 'selected' : ''; ?>>Bungalows</option>
-                        <option value="Type I"    <?php echo ($row['quarter_type'] ?? '') === 'Type I'    ? 'selected' : ''; ?>>Type I</option>
-                        <option value="Type II"   <?php echo ($row['quarter_type'] ?? '') === 'Type II'   ? 'selected' : ''; ?>>Type II</option>
-                        <option value="Type III"  <?php echo ($row['quarter_type'] ?? '') === 'Type III'  ? 'selected' : ''; ?>>Type III</option>
-                        <option value="Grade III" <?php echo ($row['quarter_type'] ?? '') === 'Grade III' ? 'selected' : ''; ?>>Grade III</option>
+                        <option value="Bungalows">Bungalows</option>
+                        <option value="Type I">Type I</option>
+                        <option value="Type II">Type II</option>
+                        <option value="Type III">Type III</option>
+                        <option value="Grade III">Grade III</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="quarter_assessment_rent">Assessment Rent (LKR):</label>
-                    <input type="number" step="0.01" min="0"
-                           id="quarter_assessment_rent" name="quarter_assessment_rent"
-                           value="<?php echo htmlspecialchars((string)($row['quarter_assessment_rent'] ?? '0')); ?>">
+                    <label for="assessmentRent">Assessment Rent (LKR):</label>
+                    <input type="text" id="assessmentRent" required>
                 </div>
             </div>
 
             <div class="form-row">
                 <div class="form-group">
-                    <label for="quarter_status">Status:</label>
-                    <select id="quarter_status" name="quarter_status" required>
-                        <option value="Available"         <?php echo ($row['quarter_status'] ?? '') === 'Available'         ? 'selected' : ''; ?>>Available</option>
-                        <option value="Occupied"          <?php echo ($row['quarter_status'] ?? '') === 'Occupied'          ? 'selected' : ''; ?>>Occupied</option>
-                        <option value="Under Maintenance" <?php echo ($row['quarter_status'] ?? '') === 'Under Maintenance' ? 'selected' : ''; ?>>Under Maintenance</option>
+                    <label for="status">Status:</label>
+                    <select id="status" required>
+                        <option value="Available">Available</option>
+                        <option value="Occupied">Occupied</option>
+                        <option value="Under Maintenance">Under Maintenance</option>
                     </select>
                 </div>
                 <div class="form-group">
                     <label>Facility (Electricity & Water):</label>
                     <div class="checkbox-group">
-                        <label><input type="checkbox" id="has_electricity" name="has_electricity" <?php echo (int)$row['has_electricity'] ? 'checked' : ''; ?>> Electricity</label>
-                        <label><input type="checkbox" id="has_water" name="has_water" <?php echo (int)$row['has_water'] ? 'checked' : ''; ?>> Water</label>
+                        <label><input type="checkbox" id="electric"> Electricity</label>
+                        <label><input type="checkbox" id="water"> Water</label>
                     </div>
                 </div>
             </div>
@@ -496,6 +432,25 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 </div>
 
 <script>
+    const serverQuartersData = <?php echo json_encode($quartersDatabase); ?>;
+
+    function getStoredQuartersData() {
+        const data = localStorage.getItem('quartersData_v2');
+        let parsed = null;
+        try {
+            parsed = data ? JSON.parse(data) : null;
+        } catch (e) {
+            parsed = null;
+        }
+
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+            localStorage.setItem('quartersData_v2', JSON.stringify(serverQuartersData));
+            return [...serverQuartersData];
+        }
+
+        return parsed;
+    }
+
     function toggleDropdown() {
         const dropdown = document.getElementById('profileDropdown');
         if (dropdown) {
@@ -528,6 +483,61 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     function executeLogout() {
         window.location.href = "login.php";
     }
+
+    let editIndex = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        editIndex = urlParams.get('index') ?? urlParams.get('id');
+
+        const quartersList = getStoredQuartersData();
+        if (editIndex !== null && quartersList[editIndex]) {
+            const item = quartersList[editIndex];
+            document.getElementById('quarterNum').value = item.quarterNum || '';
+            document.getElementById('quarterName').value = item.quarterName || '';
+            document.getElementById('division').value = item.division || '';
+            document.getElementById('ownership').value = item.ownership || '';
+            document.getElementById('quarterArea').value = item.quarterArea || '';
+            document.getElementById('location').value = item.location || '';
+            document.getElementById('address').value = item.address || '';
+            document.getElementById('quarterType').value = item.quarterType || '';
+            document.getElementById('assessmentRent').value = item.assessmentRent || '';
+            document.getElementById('status').value = item.status || 'Available';
+            document.getElementById('electric').checked = !!item.electric;
+            document.getElementById('water').checked = !!item.water;
+        }
+    });
+
+    document.getElementById('editQuarterForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        let quartersList = getStoredQuartersData();
+        if (editIndex !== null && quartersList[editIndex]) {
+            quartersList[editIndex] = {
+                quarterNum: document.getElementById('quarterNum').value.trim(),
+                quarterName: document.getElementById('quarterName').value.trim(),
+                division: document.getElementById('division').value.trim(),
+                ownership: document.getElementById('ownership').value.trim(),
+                quarterArea: document.getElementById('quarterArea').value.trim(),
+                location: document.getElementById('location').value.trim(),
+                address: document.getElementById('address').value.trim(),
+                quarterType: document.getElementById('quarterType').value,
+                assessmentRent: document.getElementById('assessmentRent').value.trim(),
+                status: document.getElementById('status').value,
+                electric: document.getElementById('electric').checked,
+                water: document.getElementById('water').checked
+            };
+
+            localStorage.setItem('quartersData_v2', JSON.stringify(quartersList));
+
+            const alertBox = document.getElementById('successAlert');
+            alertBox.style.display = 'block';
+
+            setTimeout(() => {
+                window.location.href = "quarters_list.php";
+            }, 1500);
+        }
+    });
 </script>
 
 <?php

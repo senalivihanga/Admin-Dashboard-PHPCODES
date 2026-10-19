@@ -1,218 +1,179 @@
 <?php
 /**
- * Edit System User - Sri Lanka Railways
- * Reads and updates a staff user from the real `users` table.
+ * Edit System User Details Page
  */
+
+// සැසිය දැනටමත් ආරම්භ වී ඇත්දැයි පරීක්ෂා කර බැලීම[cite: 19]
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-require_once __DIR__ . '/../../../config/config.php';
+// පිටු මාතෘකාව සැකසීම[cite: 19]
+$pageTitle = "Edit System User Details - Sri Lanka Railways";
 
-$pageTitle = "Edit System User - Sri Lanka Railways";
-$hide_admin_extras = true;
+// ඩේටාබේස් සම්බන්ධතාවය (Database Connection)[cite: 19]
+$host = 'localhost';
+$db   = 'admin_dashboard_db';
+$user = 'root';
+$pass = '';
 
-$error_message = '';
-$nic = $_GET['nic'] ?? '';
-
-$roles = [
-    2 => 'Super Admin',
-    3 => 'Immediate Boss',
-    4 => 'Personal File',
-    5 => 'Subject Clerk',
-    6 => 'Branch Officer',
-    7 => 'Final Approval',
-];
-
-$conn = getDBConnection();
-
-// Fetch staff user
-$user_row = null;
-if ($nic !== '') {
-    $stmt = $conn->prepare(
-        "SELECT nic, name, email, computer_number, mobile, role_id
-           FROM users
-          WHERE nic = ? AND role_id BETWEEN 2 AND 7
-          LIMIT 1"
-    );
-    $stmt->bind_param("s", $nic);
-    $stmt->execute();
-    $user_row = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
+try {
+    $pdo = new PDO("mysql:host=$host;dbname=$db;charset=utf8mb4", $user, $pass);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    die("Connection failed: " . $e->getMessage());
 }
 
-if (!$user_row) {
-    $_SESSION['flash_message'] = 'System user not found.';
-    $conn->close();
-    header('Location: ' . baseUrl('admin/system-users.php'));
-    exit;
+$successMessage = "";
+$errorMessage = "";
+
+// URL එකෙන් 'id' ලබා ගැනීම (Get ID from URL)[cite: 19]
+$id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+
+if ($id <= 0) {
+    header("Location: system-users.php");
+    exit();
 }
 
+// ෆෝම් එක සබ්මිට් වූ විට ඩේටා යාවත්කාලීන කිරීම (Handle Form Submission & Update Data)[cite: 19]
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $newNic      = trim($_POST['nic'] ?? '');
+    $nic         = trim($_POST['nic'] ?? '');
     $computer_no = trim($_POST['computer_no'] ?? '');
-    $name        = trim($_POST['full_name'] ?? '');
+    $fullName    = trim($_POST['full_name'] ?? '');
+    $designation = trim($_POST['designation'] ?? '');
+    $role        = trim($_POST['role'] ?? '');
+    $workplace   = trim($_POST['workplace'] ?? '');
     $email       = trim($_POST['email'] ?? '');
     $phone       = trim($_POST['phone'] ?? '');
-    $role_id     = (int) ($_POST['role_id'] ?? 0);
     $password    = $_POST['password'] ?? '';
-    $confirm     = $_POST['confirm_password'] ?? '';
 
-    if (!array_key_exists($role_id, $roles)) {
-        $error_message = 'Please select a valid staff role.';
-    } elseif (!empty($password) && $password !== $confirm) {
-        $error_message = 'Passwords do not match! Please check again.';
+    // නව පාස්වර්ඩ් එකක් ලබා දී ඇත්දැයි පරීක්ෂා කිරීම[cite: 19]
+    if (!empty($password)) {
+        $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+        $stmt = $pdo->prepare("UPDATE system_users SET nic = ?, computer_no = ?, full_name = ?, designation = ?, role = ?, workplace = ?, email = ?, phone = ?, password = ? WHERE id = ?");
+        $success = $stmt->execute([$nic, $computer_no, $fullName, $designation, $role, $workplace, $email, $phone, $hashedPassword, $id]);
     } else {
-        if (!empty($password)) {
-            $hash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
-            $upd = $conn->prepare(
-                "UPDATE users
-                    SET nic = ?, computer_number = ?, name = ?, email = ?, mobile = ?, role_id = ?, password = ?
-                  WHERE nic = ? AND role_id BETWEEN 2 AND 7"
-            );
-            $upd->bind_param("sssssiss", $newNic, $computer_no, $name, $email, $phone, $role_id, $hash, $nic);
-        } else {
-            $upd = $conn->prepare(
-                "UPDATE users
-                    SET nic = ?, computer_number = ?, name = ?, email = ?, mobile = ?, role_id = ?
-                  WHERE nic = ? AND role_id BETWEEN 2 AND 7"
-            );
-            $upd->bind_param("sssssis", $newNic, $computer_no, $name, $email, $phone, $role_id, $nic);
-        }
+        // පාස්වර්ඩ් එක හිස්ව තැබුවහොත් පැරණි පාස්වර්ඩ් එක එලෙසම තබා අනෙක් දත්ත පමණක් යාවත්කාලීන කිරීම[cite: 19]
+        $stmt = $pdo->prepare("UPDATE system_users SET nic = ?, computer_no = ?, full_name = ?, designation = ?, role = ?, workplace = ?, email = ?, phone = ? WHERE id = ?");
+        $success = $stmt->execute([$nic, $computer_no, $fullName, $designation, $role, $workplace, $email, $phone, $id]);
+    }
 
-        if ($upd->execute()) {
-            $upd->close();
-            $conn->close();
-            $_SESSION['flash_message'] = 'System user updated successfully!';
-            header('Location: ' . baseUrl('admin/system-users.php'));
-            exit;
-        } else {
-            $error_message = 'Update failed: ' . $conn->error;
-            $upd->close();
-        }
+    // යාවත්කාලීන වීම සාර්ථක නම් කෙලින්ම system-users.php වෙත යැවීම[cite: 19]
+    if ($success) {
+        header("Location: system-users.php");
+        exit();
+    } else {
+        $errorMessage = "Failed to update system user details.";
     }
 }
 
-$conn->close();
+// ඩේටාබේස් එකෙන් අදාළ පරිශීලක දත්ත ලබා ගැනීම[cite: 19]
+$stmt = $pdo->prepare("SELECT * FROM system_users WHERE id = ?");
+$stmt->execute([$id]);
+$systemUser = $stmt->fetch(PDO::FETCH_ASSOC);
 
+if (!$systemUser) {
+    header("Location: system-users.php");
+    exit();
+}
+
+// Admin Header ඇතුළත් කිරීම[cite: 19]
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
 
-<main class="flex-grow py-8 px-4">
-    <div class="max-w-4xl mx-auto w-full">
-        <a href="<?php echo baseUrl('admin/system-users.php'); ?>"
-           class="inline-flex items-center gap-2 text-[#7A1C1C] font-semibold mb-5 hover:underline">
+    <!-- ප්‍රධාන අන්තර්ගත කන්ටේනරය -->
+    <div class="container mx-auto px-4 py-8 max-w-4xl flex-grow">
+        <!-- පරිශීලක ලැයිස්තුව වෙත ආපසු යාමේ සබැඳිය (Back Link)[cite: 19] -->
+        <a href="system-users.php" class="inline-flex items-center gap-2 text-[#7A1C1C] font-semibold mb-5 hover:underline">
             <i class="fa-solid fa-arrow-left"></i> Back to System Users List
         </a>
 
         <div class="bg-white p-6 md:p-8 rounded-xl shadow-md border-t-4 border-[#7A1C1C]">
-            <h2 class="text-center text-[#7A1C1C] text-2xl md:text-3xl font-bold uppercase mb-6 tracking-wide">
-                Edit System User
-            </h2>
+            <h2 class="text-center text-[#7A1C1C] text-2xl md:text-3xl font-bold uppercase mb-6 tracking-wide md:col-span-2">Edit System User & Password</h2>
 
-            <?php if (!empty($error_message)): ?>
-                <div class="bg-red-100 text-red-700 p-3 rounded-lg mb-5 text-center font-semibold">
-                    <i class="fa-solid fa-triangle-exclamation"></i> <?php echo htmlspecialchars($error_message); ?>
+            <!-- දෝෂ පණිවිඩය පෙන්වීම (Error Message)[cite: 19] -->
+            <?php if (!empty($errorMessage)): ?>
+                <div class="bg-red-100 text-red-700 p-3 rounded-lg mb-5 text-center font-semibold md:col-span-2">
+                    <i class="fa-solid fa-triangle-exclamation"></i> <?php echo $errorMessage; ?>
                 </div>
             <?php endif; ?>
 
-            <form method="POST" action="<?php echo baseUrl('admin/edit_system_user.php') . '?nic=' . urlencode($nic); ?>"
-                  class="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-                <div>
+            <!-- පරිශීලක තොරතුරු සංස්කරණ පෝරමය (Two Column Grid Layout)[cite: 19] -->
+            <form method="POST" action="" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="mb-2">
                     <label class="block font-semibold mb-1.5 text-slate-800 text-sm">NIC Number</label>
-                    <input type="text" name="nic" required
-                           value="<?php echo htmlspecialchars($user_row['nic']); ?>"
-                           class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]">
+                    <input type="text" name="nic" class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]" value="<?php echo htmlspecialchars($systemUser['nic'] ?? ''); ?>" required>
                 </div>
 
-                <div>
+                <div class="mb-2">
                     <label class="block font-semibold mb-1.5 text-slate-800 text-sm">Computer Number</label>
-                    <input type="text" id="computerNumberInput" name="computer_no" required
-                           inputmode="numeric" pattern="[0-9]+"
-                           value="<?php echo htmlspecialchars($user_row['computer_number'] ?? ''); ?>"
-                           class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]">
+                    <input type="text" id="computerNumberInput" name="computer_no" value="<?php echo htmlspecialchars($systemUser['computer_no'] ?? ''); ?>" inputmode="numeric" pattern="[0-9]+" title="Enter digits only" placeholder="Enter Computer Number (e.g. 405)" required class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]">
                 </div>
 
-                <div>
+                <div class="mb-2">
                     <label class="block font-semibold mb-1.5 text-slate-800 text-sm">Name</label>
-                    <input type="text" name="full_name" required
-                           value="<?php echo htmlspecialchars($user_row['name']); ?>"
-                           class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]">
+                    <input type="text" name="full_name" class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]" value="<?php echo htmlspecialchars($systemUser['full_name'] ?? ''); ?>" required>
                 </div>
 
-                <div>
+                <div class="mb-2">
+                    <label class="block font-semibold mb-1.5 text-slate-800 text-sm">Designation</label>
+                    <input type="text" name="designation" class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]" value="<?php echo htmlspecialchars($systemUser['designation'] ?? ''); ?>" required>
+                </div>
+
+                <div class="mb-2">
                     <label class="block font-semibold mb-1.5 text-slate-800 text-sm">System Role</label>
-                    <select name="role_id" required
-                            class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]">
-                        <?php foreach ($roles as $rid => $label): ?>
-                            <option value="<?php echo $rid; ?>" <?php echo ((int) $user_row['role_id'] === $rid) ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($label); ?>
-                            </option>
-                        <?php endforeach; ?>
+                    <select name="role" class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]" required>
+                        <option value="">-- Select System Role --</option>
+                        <option value="Admin" <?php if(($systemUser['role'] ?? '') == 'Admin') echo 'selected'; ?>>Admin</option>
+                        <option value="Immediate Boss" <?php if(($systemUser['role'] ?? '') == 'Immediate Boss') echo 'selected'; ?>>Immediate Boss</option>
+                        <option value="Personal File" <?php if(($systemUser['role'] ?? '') == 'Personal File') echo 'selected'; ?>>Personal File</option>
+                        <option value="Subject Clerk" <?php if(($systemUser['role'] ?? '') == 'Subject Clerk') echo 'selected'; ?>>Subject Clerk</option>
+                        <option value="Branch Officer" <?php if(($systemUser['role'] ?? '') == 'Branch Officer') echo 'selected'; ?>>Branch Officer</option>
+                        <option value="Final Approval" <?php if(($systemUser['role'] ?? '') == 'Final Approval') echo 'selected'; ?>>Final Approval</option>
                     </select>
                 </div>
 
-                <div>
+                <div class="mb-2">
+                    <label class="block font-semibold mb-1.5 text-slate-800 text-sm">Current Workplace</label>
+                    <input type="text" name="workplace" class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]" value="<?php echo htmlspecialchars($systemUser['workplace'] ?? ''); ?>" required>
+                </div>
+
+                <div class="mb-2">
                     <label class="block font-semibold mb-1.5 text-slate-800 text-sm">Email Address</label>
-                    <input type="email" name="email" required
-                           value="<?php echo htmlspecialchars($user_row['email']); ?>"
-                           class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]">
+                    <input type="email" name="email" class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]" value="<?php echo htmlspecialchars($systemUser['email'] ?? ''); ?>" required>
                 </div>
 
-                <div>
+                <div class="mb-2">
                     <label class="block font-semibold mb-1.5 text-slate-800 text-sm">Phone Number</label>
-                    <input type="text" name="phone"
-                           value="<?php echo htmlspecialchars($user_row['mobile'] ?? ''); ?>"
-                           class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]">
+                    <input type="text" name="phone" class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]" value="<?php echo htmlspecialchars($systemUser['phone'] ?? ''); ?>" required>
                 </div>
 
-                <div>
-                    <label class="block font-semibold mb-1.5 text-slate-800 text-sm">
-                        New Password <span class="text-xs font-normal text-gray-500">(leave blank to keep current)</span>
-                    </label>
-                    <input type="password" id="password" name="password" minlength="8"
-                           placeholder="Enter new password if changing"
-                           class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]">
+                <div class="mb-2 md:col-span-2">
+                    <label class="block font-semibold mb-1.5 text-slate-800 text-sm">New Password</label>
+                    <input type="password" name="password" class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]" placeholder="Enter new password if changing">
                 </div>
 
-                <div>
-                    <label class="block font-semibold mb-1.5 text-slate-800 text-sm">Confirm New Password</label>
-                    <input type="password" id="confirmPassword" name="confirm_password" minlength="8"
-                           placeholder="Re-enter new password"
-                           class="w-full p-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#7A1C1C]">
-                </div>
-
+                <!-- Submit Button එක තීරු දෙකම ආවරණය වන පරිදි සකසා ඇත -->
                 <div class="md:col-span-2 mt-2">
-                    <button type="submit"
-                            class="w-full bg-[#7A1C1C] hover:bg-[#5c1414] text-white font-semibold py-3 px-4 rounded-md transition cursor-pointer">
-                        <i class="fa-solid fa-save"></i> Update System User
+                    <button type="submit" class="bg-[#7A1C1C] hover:bg-[#5c1414] text-white border-none py-3 w-full rounded-md font-semibold text-base cursor-pointer transition">
+                        <i class="fa-solid fa-save"></i> Update Changes
                     </button>
                 </div>
             </form>
         </div>
     </div>
-</main>
 
-<script>
-    const computerInput = document.getElementById('computerNumberInput');
-    if (computerInput) {
-        computerInput.addEventListener('input', event => {
-            event.target.value = event.target.value.replace(/\D/g, '');
-        });
-    }
-
-    document.querySelector('form').addEventListener('submit', function (e) {
-        const p1 = document.getElementById('password').value;
-        const p2 = document.getElementById('confirmPassword').value;
-        if (p1 !== '' && p1 !== p2) {
-            alert("Passwords do not match! Please check again.");
-            document.getElementById('confirmPassword').focus();
-            e.preventDefault();
+    <script>
+        // පරිගණක අංකය සඳහා ඉලක්කම් පමණක් ඇතුළත් කිරීමට සැලැස්වීම[cite: 19]
+        const computerInput = document.getElementById('computerNumberInput');
+        if (computerInput) {
+            computerInput.addEventListener('input', event => {
+                event.target.value = event.target.value.replace(/\D/g, '');
+            });
         }
-    });
-</script>
+    </script>
 
 <?php
+// Admin Footer ඇතුළත් කිරීම[cite: 19]
 require_once __DIR__ . '/../layouts/admin_footer.php';
 ?>

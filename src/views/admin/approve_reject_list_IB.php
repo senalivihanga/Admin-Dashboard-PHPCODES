@@ -15,8 +15,63 @@ $searchQuery = trim($_GET['search'] ?? '');
 $approvedList = [];
 $rejectedList = [];
 $conn = getDBConnection();
+$rrMessage = '';
+$rrType = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $postAction = $_POST['action'] ?? '';
+    $postId = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
+    $postReason = trim((string)($_POST['reason'] ?? ''));
+
+    if ($postId && ($postAction === 'send_back' || ($postAction === 'reject' && $postReason !== ''))) {
+        if ($postAction === 'send_back') {
+            // Boss disagrees with Personal File: send it back to Personal File (clerk decision reset so it can flow on again)
+            $stmt = $conn->prepare(
+                "UPDATE applications
+                    SET application_status = 'pending_clerk', file_status = 'pending', clerk_status = 'pending'
+                  WHERE id = ? AND application_status = 'returned_to_boss' AND file_status = 'rejected'"
+            );
+            $stmt->bind_param('i', $postId);
+        } else {
+            // Boss agrees: reject it and send it to the applicant (file_reason is kept so they can see it)
+            $stmt = $conn->prepare(
+                "UPDATE applications
+                    SET boss_status = 'rejected', boss_reason = ?, application_status = 'rejected'
+                  WHERE id = ? AND application_status = 'returned_to_boss' AND file_status = 'rejected'"
+            );
+            $stmt->bind_param('si', $postReason, $postId);
+        }
+        $stmt->execute();
+        if ($stmt->affected_rows === 1) {
+            $rrMessage = $postAction === 'send_back'
+                ? 'Application sent back to Personal File.'
+                : 'Application rejected and sent to the applicant for correction.';
+            $rrType = $postAction === 'send_back' ? 'success' : 'error';
+            if ($postAction === 'reject') {
+                $notifStmt = $conn->prepare(
+                    "INSERT INTO notifications (nic, title, message, is_read)
+                     SELECT nic, 'Application Rejected',
+                            CONCAT('Your application was rejected. Personal File reason: ', IFNULL(file_reason, '-'),
+                                   ' | Immediate Boss reason: ', ?),
+                            0
+                     FROM applications WHERE id = ?"
+                );
+                $notifStmt->bind_param('si', $postReason, $postId);
+                $notifStmt->execute();
+                $notifStmt->close();
+            }
+        } else {
+            $rrMessage = 'This application is no longer awaiting your decision.';
+            $rrType = 'error';
+        }
+        $stmt->close();
+    } elseif ($postAction === 'reject') {
+        $rrMessage = 'A rejection reason is required.';
+        $rrType = 'error';
+    }
+}
+
 $sql = "SELECT a.id, a.application_no, a.nic, a.computer_no, a.boss_status,
-               a.boss_reason, u.name, u.applicant_designation
+               a.boss_reason, a.file_status, a.file_reason, a.application_status, u.name, u.applicant_designation
         FROM applications AS a
         INNER JOIN users AS u ON u.nic = a.nic
         WHERE a.boss_status IN ('approved', 'rejected')";
@@ -35,6 +90,14 @@ $stmt->close();
 $conn->close();
 
 foreach ($logData as $item) {
+    $item['can_act'] = false;
+    if ($item['application_status'] === 'returned_to_boss' && $item['file_status'] === 'rejected') {
+        // Rejected by Personal File and sent back to the Immediate Boss: shown in the Rejected List with actions
+        $item['reason'] = 'Returned by Personal File: ' . ($item['file_reason'] ?: '-');
+        $item['can_act'] = true;
+        $rejectedList[] = $item;
+        continue;
+    }
     $item['reason'] = $item['boss_reason'] ?: '-';
     if ($item['boss_status'] === 'approved') {
         $approvedList[] = $item;
@@ -403,6 +466,10 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     </div>
 
     <!-- Tab Switcher Buttons[cite: 13] -->
+    <?php if (!empty($rrMessage)): ?>
+        <div class="rr-alert <?php echo $rrType === 'error' ? 'error' : ''; ?>"><?php echo htmlspecialchars($rrMessage); ?></div>
+    <?php endif; ?>
+
     <div class="tab-buttons-bar">
         <a href="?tab=approved<?php echo $searchQuery !== '' ? '&search=' . urlencode($searchQuery) : ''; ?>" id="approvedTabBtn" class="tab-btn <?php echo $activeTab === 'approved' ? 'active' : ''; ?>">
             <i class="fa-solid fa-clipboard-check"></i> Approved List
@@ -499,11 +566,12 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                             <th>Designation</th>
                             <th>Status</th>
                             <th>Remarks / Reason</th>
+                            <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($rejectedList)): ?>
-                            <tr><td colspan="8" style="text-align: center; color: #64748b; padding: 25px;">No rejected records found.</td></tr>
+                            <tr><td colspan="9" style="text-align: center; color: #64748b; padding: 25px;">No rejected records found.</td></tr>
                         <?php else: ?>
                             <?php $i = 1; foreach ($rejectedList as $item): ?>
                                 <tr>
@@ -515,6 +583,18 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                                     <td><?php echo htmlspecialchars((string)($item['applicant_designation'] ?? '')); ?></td>
                                     <td><span class="badge badge-rejected"><i class="fa-solid fa-xmark" title="Rejected"></i></span></td>
                                     <td><span class="reason-text"><?php echo htmlspecialchars($item['reason']); ?></span></td>
+                                    <td>
+                                        <?php if (!empty($item['can_act'])): ?>
+                                            <div class="rr-actions">
+                                                <form method="POST" action="?tab=rejected" style="display:inline;">
+                                                    <input type="hidden" name="id" value="<?php echo (int)$item['id']; ?>">
+                                                    <input type="hidden" name="action" value="send_back">
+                                                    <button type="submit" class="rr-btn rr-ok" title="Send back to Personal File"><i class="fa-solid fa-rotate-left"></i></button>
+                                                </form>
+                                                <button type="button" class="rr-btn rr-no" onclick="openRejectModal(<?php echo (int)$item['id']; ?>)" title="Reject and send to applicant"><i class="fa-solid fa-xmark"></i></button>
+                                            </div>
+                                        <?php else: ?>-<?php endif; ?>
+                                    </td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>
@@ -524,6 +604,44 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         </div>
     </div>
 </main>
+
+<style>
+    .rr-alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 15px; font-weight: 600; background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .rr-alert.error { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+    .rr-actions { display: flex; gap: 6px; justify-content: center; }
+    .rr-btn { width: 34px; height: 34px; border: none; border-radius: 6px; color: #fff; cursor: pointer; font-size: 0.9rem; }
+    .rr-ok { background: #16a34a; }
+    .rr-no { background: #dc2626; }
+    .rr-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 9999; }
+    .rr-modal-box { background: #fff; padding: 22px; border-radius: 12px; width: 92%; max-width: 440px; }
+    .rr-modal-box h3 { margin: 0 0 10px; color: #7A1C1C; }
+    .rr-modal-box textarea { width: 100%; min-height: 90px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; font-family: inherit; }
+    .rr-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+    .rr-modal-btns button { padding: 8px 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+</style>
+
+<div id="rrModal" class="rr-modal">
+    <div class="rr-modal-box">
+        <h3>Reject Application</h3>
+        <form method="POST" action="?tab=rejected">
+            <input type="hidden" name="action" value="reject">
+            <input type="hidden" name="id" id="rrAppId" value="">
+            <textarea name="reason" id="rrReason" placeholder="Enter the rejection reason..." required></textarea>
+            <div class="rr-modal-btns">
+                <button type="button" onclick="document.getElementById('rrModal').style.display='none'" style="background:#e2e8f0;">Cancel</button>
+                <button type="submit" style="background:#dc2626;color:#fff;">Confirm Rejection</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+    function openRejectModal(id) {
+        document.getElementById('rrAppId').value = id;
+        document.getElementById('rrReason').value = '';
+        document.getElementById('rrModal').style.display = 'flex';
+    }
+</script>
+
 
 <?php
 // Admin Footer එක ඇතුළත් කිරීම[cite: 13]

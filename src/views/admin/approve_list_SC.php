@@ -16,24 +16,17 @@ $userData = [
     'initials' => 'SC'
 ];
 
-$approvedData = [
-    [
-        'id' => 1,
-        'appNo' => 'SLR/AOT/2026/0001',
-        'nic' => '981234567V',
-        'compNo' => '101',
-        'name' => 'A. B. Perera',
-        'desig' => 'Station Master'
-    ],
-    [
-        'id' => 2,
-        'appNo' => 'SLR/AOT/2026/0003',
-        'nic' => '923456789V',
-        'compNo' => '105',
-        'name' => 'M. N. Fernando',
-        'desig' => 'Locomotive Driver'
-    ]
-];
+$conn = getDBConnection();
+$approvedResult = $conn->query(
+    "SELECT a.id, a.application_no AS appNo, a.nic, a.computer_no AS compNo,
+               u.name, COALESCE(u.applicant_designation, '') AS desig
+     FROM applications AS a
+     INNER JOIN users AS u ON u.nic = a.nic
+     WHERE a.clerk_status = 'approved'
+     ORDER BY a.application_date DESC, a.id DESC"
+);
+$approvedData = $approvedResult->fetch_all(MYSQLI_ASSOC);
+$conn->close();
 
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>

@@ -10,8 +10,18 @@ if (session_status() === PHP_SESSION_NONE) {
 
 $pageTitle = "Edit Allocated Quarter - Sri Lanka Railways";
 
-// Use the central database connection
-$conn = getDBConnection();
+// Database configuration
+$host = 'localhost';
+$dbname = 'admin_dashboard_db';
+$username = 'root';
+$password = '';
+
+try {
+    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    die("Connection failed: " . $e->getMessage());
+}
 
 $id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 $errorMessage = '';
@@ -30,29 +40,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $allocatedDate = $_POST['allocatedDate'] ?? '';
     $other = $_POST['other'] ?? 'None';
 
-    $sql = "UPDATE allocated_quarters SET nic = ?, computer_no = ?, quarter_no = ?, quarter_name = ?, quarter_location = ?, quarter_type = ?, resident_name = ?, designation = ?, workplace = ?, allocated_date = ?, other = ? WHERE id = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("sssssssssssi", $nic, $computerNo, $quarterNo, $quarterName, $quarterLocation, $quarterType, $residentName, $designation, $workplace, $allocatedDate, $other, $id);
-
-    if ($stmt->execute()) {
-        $stmt->close();
-        $conn->close();
+    try {
+        $stmt = $pdo->prepare("UPDATE allocated_quarters SET nic = ?, computer_no = ?, quarter_no = ?, quarter_name = ?, quarter_location = ?, quarter_type = ?, resident_name = ?, designation = ?, workplace = ?, allocated_date = ?, other = ? WHERE id = ?");
+        $stmt->execute([$nic, $computerNo, $quarterNo, $quarterName, $quarterLocation, $quarterType, $residentName, $designation, $workplace, $allocatedDate, $other, $id]);
+        
         header("Location: allocated_quarters.php");
         exit();
-    } else {
-        $errorMessage = "Error updating record: " . $conn->error;
-        $stmt->close();
+    } catch (PDOException $e) {
+        $errorMessage = "Error updating record: " . $e->getMessage();
     }
 }
 
 // Existing record fetch karne
-$stmt = $conn->prepare("SELECT * FROM allocated_quarters WHERE id = ?");
-$stmt->bind_param("i", $id);
-$stmt->execute();
-$result = $stmt->get_result();
-$record = $result->fetch_assoc();
-$stmt->close();
-$conn->close();
+$stmt = $pdo->prepare("SELECT * FROM allocated_quarters WHERE id = ?");
+$stmt->execute([$id]);
+$record = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$record) {
     echo "<script>alert('Record not found!'); window.location.href='allocated_quarters.php';</script>";

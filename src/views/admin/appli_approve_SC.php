@@ -20,68 +20,72 @@ $user = [
     'name' => $userData['name']
 ];
 
-// Initialize mock session data if not already set[cite: 4]
-if (!isset($_SESSION['applications'])) {
-    $_SESSION['applications'] = [
-        ['id' => 1, 'appNo' => 'SLR/AOT/2026/0001', 'nic' => '981234567V', 'compNo' => '1054', 'name' => 'A. B. Perera', 'desig' => 'Station Master'],
-        ['id' => 2, 'appNo' => 'SLR/AOT/2026/0002', 'nic' => '957891234V', 'compNo' => '1055', 'name' => 'K. D. Silva', 'desig' => 'Signal Inspector'],
-        ['id' => 3, 'appNo' => 'SLR/AOT/2026/0003', 'nic' => '923456789V', 'compNo' => '1056', 'name' => 'M. N. Fernando', 'desig' => 'Locomotive Driver']
-    ];
-}
-
-if (!isset($_SESSION['approvedApplications'])) {
-    $_SESSION['approvedApplications'] = [];
-}
-if (!isset($_SESSION['rejectedApplications'])) {
-    $_SESSION['rejectedApplications'] = [];
-}
-
 $alert_msg = '';
 $alert_type = '';
+$conn = getDBConnection();
 
-// Handle Form Actions (Approve or Reject)[cite: 4]
+// Subject Clerk decision, saved in applications.clerk_status / clerk_reason
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-    $id = intval($_POST['id'] ?? 0);
+    $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
+    $reason = trim((string)($_POST['rejectionReason'] ?? ''));
 
-    if ($action === 'approve') {
-        foreach ($_SESSION['applications'] as $index => $item) {
-            if ($item['id'] === $id) {
-                $_SESSION['approvedApplications'][] = $item;
-                unset($_SESSION['applications'][$index]);
-                $_SESSION['applications'] = array_values($_SESSION['applications']);
-                $alert_msg = "Application approved successfully and moved to Approved List.";
-                $alert_type = "success";
-                break;
-            }
+    if ($id && ($action === 'approve' || ($action === 'reject' && $reason !== ''))) {
+        $clerkStatus = $action === 'approve' ? 'approved' : 'rejected';
+        $clerkReason = $action === 'reject' ? $reason : null;
+        // Approve -> continues to the next stage (pending_super). Reject -> goes BACK TO PERSONAL FILE (previous stage).
+        $applicationStatus = $action === 'approve' ? 'pending_super' : 'returned_to_file';
+
+        $stmt = $conn->prepare(
+            "UPDATE applications
+                SET clerk_status = ?, clerk_reason = ?, application_status = ?
+              WHERE id = ?
+                AND boss_status = 'approved'
+                AND file_status = 'approved'
+                AND clerk_status = 'pending'
+                AND application_status = 'pending_clerk'"
+        );
+        $stmt->bind_param('sssi', $clerkStatus, $clerkReason, $applicationStatus, $id);
+        $stmt->execute();
+
+        if ($stmt->affected_rows === 1) {
+            $alert_msg = $action === 'approve'
+                ? 'Application approved successfully and moved to Approved List.'
+                : 'Application rejected and returned to Personal File.';
+            $alert_type = $action === 'approve' ? 'success' : 'error';
+        } else {
+            $alert_msg = 'This application is no longer awaiting your decision.';
+            $alert_type = 'error';
         }
+        $stmt->close();
     } elseif ($action === 'reject') {
-        $reason = trim($_POST['rejectionReason'] ?? '');
-        if (!empty($reason)) {
-            foreach ($_SESSION['applications'] as $index => $item) {
-                if ($item['id'] === $id) {
-                    $item['rejectionReason'] = $reason;
-                    $_SESSION['rejectedApplications'][] = $item;
-                    unset($_SESSION['applications'][$index]);
-                    $_SESSION['applications'] = array_values($_SESSION['applications']);
-                    $alert_msg = "Application rejected and moved to Rejected List.";
-                    $alert_type = "error";
-                    break;
-                }
-            }
-        }
+        $alert_msg = 'A rejection reason is required.';
+        $alert_type = 'error';
     }
 }
 
-// Handle Search Filter[cite: 4]
+// Queue = applications approved by Personal File that the clerk has not decided yet
 $searchQuery = trim($_GET['search'] ?? '');
-$displayData = $_SESSION['applications'];
-
-if (!empty($searchQuery)) {
-    $displayData = array_filter($displayData, function($item) use ($searchQuery) {
-        return stripos($item['nic'], $searchQuery) !== false || stripos($item['name'], $searchQuery) !== false;
-    });
+$sql = "SELECT a.id, a.application_no AS appNo, a.nic, a.computer_no AS compNo,
+               u.name, COALESCE(u.applicant_designation, '') AS desig
+        FROM applications AS a
+        INNER JOIN users AS u ON u.nic = a.nic
+        WHERE a.boss_status = 'approved'
+          AND a.file_status = 'approved'
+          AND a.clerk_status = 'pending'
+          AND a.application_status = 'pending_clerk'";
+if ($searchQuery !== '') {
+    $sql .= " AND (a.application_no LIKE ? OR a.nic LIKE ? OR a.computer_no LIKE ? OR u.name LIKE ?)";
+    $searchTerm = '%' . $searchQuery . '%';
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date ASC, a.id ASC');
+    $stmt->bind_param('ssss', $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+} else {
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date ASC, a.id ASC');
 }
+$stmt->execute();
+$displayData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
 
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>

@@ -13,12 +13,13 @@ $pageTitle = "Personal File Dashboard - Sri Lanka Railways";
 
 $conn = getDBConnection();
 $statsResult = $conn->query(
-    "SELECT file_status, COUNT(*) AS total
+    "SELECT IF(application_status = 'returned_to_file', 'rejected', file_status) AS file_status,
+            COUNT(*) AS total
      FROM applications
      WHERE boss_status = 'approved'
-       AND application_status IN ('pending_clerk', 'pending_super', 'approved', 'rejected')
+       AND application_status IN ('pending_clerk', 'pending_super', 'approved', 'rejected', 'returned_to_boss', 'returned_to_file')
        AND file_status IN ('pending', 'approved', 'rejected')
-     GROUP BY file_status"
+     GROUP BY IF(application_status = 'returned_to_file', 'rejected', file_status)"
 );
 $dashboardStats = [
     'pending' => 0,

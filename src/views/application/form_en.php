@@ -236,11 +236,17 @@ include __DIR__ . '/../layouts/header.php';
                     <?php if ($resubmitApp): ?>
                     <div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:14px 18px;border-radius:8px;margin-bottom:20px;">
                         <strong><i class="fa-solid fa-triangle-exclamation"></i> Your previous application was rejected.</strong><br>
+                        <?php if (!empty($resubmitApp['boss_reason']) || (empty($resubmitApp['file_reason']) && empty($resubmitApp['clerk_reason']))): ?>
                         <span>Reason from Immediate Boss:</span>
                         <em><?= htmlspecialchars($resubmitApp['boss_reason'] ?? '—') ?></em>
+                        <?php endif; ?>
                         <?php if (!empty($resubmitApp['file_reason'])): ?>
                         <br><span>Reason from Personal File:</span>
                         <em><?= htmlspecialchars($resubmitApp['file_reason']) ?></em>
+                        <?php endif; ?>
+                        <?php if (!empty($resubmitApp['clerk_reason'])): ?>
+                        <br><span>Reason from Subject Clerk:</span>
+                        <em><?= htmlspecialchars($resubmitApp['clerk_reason']) ?></em>
                         <?php endif; ?>
                     </div>
                     <?php endif; ?>

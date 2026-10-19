@@ -328,13 +328,19 @@ include __DIR__ . '/../layouts/header.php';
                             <i class="fa-solid fa-triangle-exclamation mr-2"></i>
                             Your application was rejected
                         </h3>
+                        <?php if (!empty($application['boss_reason']) || (empty($application['file_reason']) && empty($application['clerk_reason']))): ?>
                         <p class="text-sm text-rose-700 mb-1">Reason from Immediate Boss:</p>
                         <p class="text-sm text-rose-900 italic mb-5">
                             <?= htmlspecialchars($application['boss_reason'] ?? '—') ?>
                         </p>
+                        <?php endif; ?>
                         <?php if (!empty($application['file_reason'])): ?>
                         <p class="text-sm text-rose-700 mb-1">Reason from Personal File:</p>
                         <p class="text-sm text-rose-900 italic mb-5"><?= htmlspecialchars($application['file_reason']) ?></p>
+                        <?php endif; ?>
+                        <?php if (!empty($application['clerk_reason'])): ?>
+                        <p class="text-sm text-rose-700 mb-1">Reason from Subject Clerk:</p>
+                        <p class="text-sm text-rose-900 italic mb-5"><?= htmlspecialchars($application['clerk_reason']) ?></p>
                         <?php endif; ?>
                         <a href="<?= htmlspecialchars(baseUrl($formPath . '?resubmit=' . (int)$application['id']), ENT_QUOTES, 'UTF-8') ?>"
                            class="inline-flex items-center bg-rose-700 hover:bg-rose-800

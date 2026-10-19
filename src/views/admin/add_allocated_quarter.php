@@ -8,40 +8,43 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Use the central database connection
-$conn = getDBConnection();
+// Database connection configuration[cite: 5]
+$host = 'localhost';
+$dbname = 'admin_dashboard_db';
+$username = 'root';
+$password = '';
 
 $message = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $nic = $_POST['nic'] ?? '';
-    $computerNo = $_POST['computerNo'] ?? '';
-    $quarterNo = $_POST['quarterNo'] ?? '';
-    $quarterName = $_POST['quarterName'] ?? '';
-    $quarterLocation = $_POST['quarterLocation'] ?? '';
-    $quarterType = $_POST['quarterType'] ?? '';
-    $residentName = $_POST['residentName'] ?? '';
-    $designation = $_POST['designation'] ?? '';
-    $workplace = $_POST['workplace'] ?? '';
-    $allocatedDate = $_POST['allocatedDate'] ?? '';
-    $other = $_POST['other'] ?? 'None';
+    try {
+        $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    $sql = "INSERT INTO allocated_quarters (nic, computer_no, quarter_no, quarter_name, quarter_location, quarter_type, resident_name, designation, workplace, allocated_date, other) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("sssssssssss", $nic, $computerNo, $quarterNo, $quarterName, $quarterLocation, $quarterType, $residentName, $designation, $workplace, $allocatedDate, $other);
+        $sql = "INSERT INTO allocated_quarters (nic, computer_no, quarter_no, quarter_name, quarter_location, quarter_type, resident_name, designation, workplace, allocated_date, other) 
+                VALUES (:nic, :computerNo, :quarterNo, :quarterName, :quarterLocation, :quarterType, :residentName, :designation, :workplace, :allocatedDate, :other)";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            ':nic' => $_POST['nic'] ?? '',
+            ':computerNo' => $_POST['computerNo'] ?? '',
+            ':quarterNo' => $_POST['quarterNo'] ?? '',
+            ':quarterName' => $_POST['quarterName'] ?? '',
+            ':quarterLocation' => $_POST['quarterLocation'] ?? '',
+            ':quarterType' => $_POST['quarterType'] ?? '',
+            ':residentName' => $_POST['residentName'] ?? '',
+            ':designation' => $_POST['designation'] ?? '',
+            ':workplace' => $_POST['workplace'] ?? '',
+            ':allocatedDate' => $_POST['allocatedDate'] ?? '',
+            ':other' => $_POST['other'] ?? 'None'
+        ]);
 
-    if ($stmt->execute()) {
-        $stmt->close();
-        $conn->close();
+        // Data successfully save zalyanantara allocated_quarters.php page var redirect hoil[cite: 5]
         header("Location: allocated_quarters.php");
         exit();
-    } else {
-        $message = "Error: " . $conn->error;
-        $stmt->close();
+
+    } catch (PDOException $e) {
+        $message = "Error: " . $e->getMessage();
     }
-    $conn->close();
 }
 
 $pageTitle = "Add Allocated Quarter - Sri Lanka Railways";
@@ -64,7 +67,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         text-decoration: none;
         font-weight: 600;
         margin-bottom: 20px;
-        font-size: 1.05rem;
+        font-size: 1.05rem; /* Font size increased here */
     }
     .back-link:hover {
         text-decoration: underline;

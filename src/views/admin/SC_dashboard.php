@@ -12,10 +12,19 @@ if (session_status() === PHP_SESSION_NONE) {
 $pageTitle = "Subject Clerk Dashboard - Sri Lanka Railways";
 
 // aadarshavata data
+$conn = getDBConnection();
+$counts = $conn->query(
+    "SELECT COUNT(*) AS total,
+            SUM(clerk_status = 'pending' AND application_status = 'pending_clerk') AS pending,
+            SUM(clerk_status = 'approved') AS approved
+     FROM applications
+     WHERE boss_status = 'approved' AND file_status = 'approved'"
+)->fetch_assoc();
+$conn->close();
 $dashboardStats = [
-    'total_approvals' => 24,
-    'pending_list' => 8,
-    'approved_list' => 85
+    'total_approvals' => (int)($counts['total'] ?? 0),
+    'pending_list'    => (int)($counts['pending'] ?? 0),
+    'approved_list'   => (int)($counts['approved'] ?? 0)
 ];
 
 $userData = [

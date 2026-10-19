@@ -16,38 +16,19 @@ $userData = [
     'initials' => 'SC'
 ];
 
-$requestData = [
-    [
-        'appNo' => 'SLR/AOT/2026/0001',
-        'nic' => '854712093V',
-        'computerNo' => '4021',
-        'name' => 'H. M. Gunawardena',
-        'designation' => 'Station Master',
-        'subDate' => '2026-09-07',
-        'quarterType' => 'Grade B Quarters',
-        'reqDate' => '2026-09-06'
-    ],
-    [
-        'appNo' => 'SLR/AOT/2026/0002',
-        'nic' => '901245678V',
-        'computerNo' => '4189',
-        'name' => 'P. R. Jayasinghe',
-        'designation' => 'Permanent Way Inspector',
-        'subDate' => '2026-09-05',
-        'quarterType' => 'Grade A Quarters',
-        'reqDate' => '2026-09-04'
-    ],
-    [
-        'appNo' => 'SLR/AOT/2026/0003',
-        'nic' => '934512786V',
-        'computerNo' => '5024',
-        'name' => 'K. L. Wickramasinghe',
-        'designation' => 'Locomotive Driver',
-        'subDate' => '2026-08-30',
-        'quarterType' => 'Grade C Quarters',
-        'reqDate' => '2026-08-28'
-    ]
-];
+$conn = getDBConnection();
+$requestResult = $conn->query(
+    "SELECT a.application_no AS appNo, a.nic, a.computer_no AS computerNo,
+            u.name, COALESCE(u.applicant_designation, '') AS designation,
+            DATE(COALESCE(a.application_submitted_at, a.created_at)) AS subDate,
+            a.quarter_type AS quarterType, a.application_date AS reqDate
+     FROM applications AS a
+     INNER JOIN users AS u ON u.nic = a.nic
+     WHERE a.boss_status = 'approved' AND a.file_status = 'approved'
+     ORDER BY a.application_date DESC, a.id DESC"
+);
+$requestData = $requestResult->fetch_all(MYSQLI_ASSOC);
+$conn->close();
 
 // Handle Search Filter matching appli-approve-IB style[cite: 22]
 $searchQuery = trim($_GET['search'] ?? '');

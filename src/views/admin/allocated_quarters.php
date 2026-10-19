@@ -10,65 +10,54 @@ if (session_status() === PHP_SESSION_NONE) {
 
 $pageTitle = "Allocated Quarters List - Sri Lanka Railways Admin";
 
-// Use the central database connection
-$conn = getDBConnection();
+// Database configuration
+$host = 'localhost';$dbname = 'admin_dashboard_db';
+$username = 'root';$password = '';
 
-// Initialize $quarters array to prevent undefined variable / count() error
-$quarters = [];
+// Initialize $quarters array to prevent undefined variable / count() error$quarters = [];
 
-// Handle Delete Request with System Message Generation
+try {
+    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    die("Database connection failed: " . $e->getMessage());
+}
+
+// Handle Delete Request with System Message Generation[cite: 1]
 if (isset($_GET['delete_id'])) {
-    $deleteId = intval($_GET['delete_id']);
-    $stmt = $conn->prepare("DELETE FROM allocated_quarters WHERE id = ?");
-    $stmt->bind_param("i", $deleteId);
-    if ($stmt->execute()) {
-        $stmt->close();
-        $conn->close();
+    $deleteId =$_GET['delete_id'];
+    try {
+        $stmt =$pdo->prepare("DELETE FROM allocated_quarters WHERE id = ?");
+        $stmt->execute([$deleteId]);
         header("Location: allocated_quarters.php?msg=deleted");
         exit();
-    } else {
-        $stmt->close();
-        $conn->close();
+    } catch (PDOException $e) {
         header("Location: allocated_quarters.php?msg=error");
         exit();
     }
 }
 
-// Handle Search Filter & Order by ASC so new records appear at the bottom
+// Handle Search Filter & Order by ASC so new records appear at the bottom (anthimata)
 $search = trim($_GET['search'] ?? '');
 if ($search !== '') {
-    $sql = "SELECT * FROM allocated_quarters WHERE nic LIKE ? OR computer_no LIKE ? OR quarter_no LIKE ? OR quarter_name LIKE ? OR quarter_location LIKE ? OR resident_name LIKE ? OR designation LIKE ? OR workplace LIKE ? ORDER BY id ASC";
-    $stmt = $conn->prepare($sql);
+    $stmt = $pdo->prepare("SELECT * FROM allocated_quarters WHERE nic LIKE ? OR computer_no LIKE ? OR quarter_no LIKE ? OR quarter_name LIKE ? OR quarter_location LIKE ? OR resident_name LIKE ? OR designation LIKE ? OR workplace LIKE ? ORDER BY id ASC");
     $searchTerm = "%" . $search . "%";
-    $stmt->bind_param("ssssssss", $searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    if ($result) {
-        $quarters = $result->fetch_all(MYSQLI_ASSOC);
-    }
-    $stmt->close();
+    $stmt->execute([$searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm]);
 } else {
-    $result = $conn->query("SELECT * FROM allocated_quarters ORDER BY id ASC");
-    if ($result) {
-        $quarters = $result->fetch_all(MYSQLI_ASSOC);
-    }
+    $stmt = $pdo->query("SELECT * FROM allocated_quarters ORDER BY id ASC");
 }
-$conn->close();
+$quarters = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// System Message Handling
-$message = '';
-$messageType = 'success';
+// System Message Handling[cite: 1]
+$message = '';$messageType = 'success';
 if (isset($_GET['msg'])) {
-    if ($_GET['msg'] === 'deleted') {
-        $message = "Record deleted successfully!";
+    if ($_GET['msg'] === 'deleted') {$message = "Record deleted successfully!";
         $messageType = 'success';
-    } elseif ($_GET['msg'] === 'error') {
-        $message = "Error: Failed to delete the record. Please try again.";
+    } elseif ($_GET['msg'] === 'error') {$message = "Error: Failed to delete the record. Please try again.";
         $messageType = 'error';
     }
 }
 
-// Include Admin Header
+// Include Admin Header[cite: 1]
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
 
@@ -308,7 +297,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     .btn-delete { background-color: #dc2626; }
     .btn-delete:hover { background-color: #b91c1c; }
 
-    /* Custom Delete Confirmation Modal Styles */
+    /* Custom Delete Confirmation Modal Styles (Adopted from Waiting Lists)[cite: 2] */
     .custom-msg-box { 
         position: fixed; 
         inset: 0; 
@@ -357,7 +346,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     .msg-btn-yes { background: #dc2626; color: white; }
     .msg-btn-no { background: #e2e8f0; color: #1f2937; }
 
-    /* Toast Notification Styles */
+    /* Toast Notification Styles[cite: 1] */
     .system-toast { 
         position: fixed; 
         right: 20px; 
@@ -385,7 +374,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     }
 </style>
 
-<!-- Custom Delete Confirmation Modal -->
+<!-- Custom Delete Confirmation Modal[cite: 2] -->
 <div class="custom-msg-box" id="deleteModal" role="dialog" aria-modal="true">
     <div class="custom-msg-card">
         <i class="fa-solid fa-triangle-exclamation modal-icon"></i>
@@ -397,7 +386,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     </div>
 </div>
 
-<!-- System Toast Notification -->
+<!-- System Toast Notification[cite: 1] -->
 <?php if (!empty($message)): ?>
 <div id="systemToast" class="system-toast <?php echo $messageType; ?>" style="display: flex;">
     <?php if ($messageType === 'success'): ?>
@@ -461,7 +450,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                 </thead>
                 <tbody>
                     <?php if (count($quarters) > 0): ?>
-                        <?php $no = 1; foreach ($quarters as $row): ?>
+                        <?php $no = 1; foreach ($quarters as$row): ?>
                             <tr>
                                 <td><?php echo $no++; ?></td>
                                 <td><?php echo htmlspecialchars($row['nic']); ?></td>
@@ -479,6 +468,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                                     <div class="action-cell">
                                         <a href="view_allocated_quarter.php?id=<?php echo $row['id']; ?>" class="action-btn btn-view" title="View Details"><i class="fa-solid fa-eye"></i></a>
                                         <a href="edit_allocated_quarter.php?id=<?php echo $row['id']; ?>" class="action-btn btn-edit" title="Edit"><i class="fa-solid fa-pen"></i></a>
+                                        <!-- Replaced standard onclick confirm popup with modal trigger[cite: 2] -->
                                         <button type="button" class="action-btn btn-delete" onclick="openDeleteModal('<?php echo $row['id']; ?>')" title="Delete"><i class="fa-solid fa-trash"></i></button>
                                     </div>
                                 </td>
@@ -495,7 +485,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     </div>
 </main>
 
-<!-- JavaScript for Custom Delete Modal Handling -->
+<!-- JavaScript for Custom Delete Modal Handling[cite: 2] -->
 <script>
     function openDeleteModal(id) {
         const deleteUrl = `allocated_quarters.php?delete_id=${id}`;
@@ -509,6 +499,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 </script>
 
 <?php
-// Include Admin Footer
+// Include Admin Footer[cite: 1]
 require_once __DIR__ . '/../layouts/admin_footer.php';
 ?>

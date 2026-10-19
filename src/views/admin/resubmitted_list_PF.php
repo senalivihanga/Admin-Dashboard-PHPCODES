@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $applicationStatus = $action === 'approve' ? 'pending_clerk' : 'returned_to_boss';
         $stmt = $conn->prepare(
             "UPDATE applications
-             SET file_status = ?, file_reason = ?, application_status = ?
+             SET file_status = ?, file_reason = ?, application_status = ?, clerk_status = 'pending'
              WHERE id = ? AND boss_status = 'approved'
                AND file_status = 'pending' AND is_resubmission = 1"
         );

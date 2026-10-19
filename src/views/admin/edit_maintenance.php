@@ -1,6 +1,6 @@
 <?php
 /**
- * Edit Maintenance Quarter - Sri Lanka Railways (database-backed)
+ * Edit Maintenance Quarter - Sri Lanka Railways Admin
  */
 require_once __DIR__ . '/../../../config/config.php';
 
@@ -16,151 +16,461 @@ $userData = [
     'initials' => 'SC'
 ];
 
-$error = '';
-$id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
-if (!$id) {
-    header('Location: ' . baseUrl('admin/maintenance.php'));
-    exit;
-}
-
-$conn = getDBConnection();
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $quarter_number        = trim($_POST['quarter_number'] ?? '');
-    $quarter_name          = trim($_POST['quarter_name'] ?? '');
-    $location_name         = trim($_POST['location_name'] ?? '');
-    $quarter_type          = trim($_POST['quarter_type'] ?? '');
-    $maintenance_status    = trim($_POST['maintenance_status'] ?? 'Under Maintenance');
-    $last_maintenance_date = ($_POST['last_maintenance_date'] ?? '') ?: null;
-    $notes                 = trim($_POST['notes'] ?? '') ?: null;
-
-    if ($quarter_number === '' || $location_name === '' || $quarter_type === '') {
-        $error = 'Quarter No, Location and Quarter Type are required.';
-    } else {
-        $stmt = $conn->prepare(
-            "UPDATE maintenance
-                SET quarter_number = ?, quarter_name = ?, location_name = ?, quarter_type = ?,
-                    maintenance_status = ?, last_maintenance_date = ?, notes = ?
-              WHERE id = ?"
-        );
-        $stmt->bind_param(
-            "sssssssi",
-            $quarter_number, $quarter_name, $location_name, $quarter_type,
-            $maintenance_status, $last_maintenance_date, $notes, $id
-        );
-        if ($stmt->execute()) {
-            $stmt->close();
-            $conn->close();
-            header('Location: ' . baseUrl('admin/maintenance.php'));
-            exit;
-        }
-        $error = 'Update failed: ' . $conn->error;
-        $stmt->close();
-    }
-}
-
-$stmt = $conn->prepare(
-    "SELECT id, quarter_number, quarter_name, location_name, quarter_type,
-            maintenance_status, last_maintenance_date, notes
-       FROM maintenance WHERE id = ? LIMIT 1"
-);
-$stmt->bind_param("i", $id);
-$stmt->execute();
-$row = $stmt->get_result()->fetch_assoc();
-$stmt->close();
-$conn->close();
-
-if (!$row) {
-    header('Location: ' . baseUrl('admin/maintenance.php'));
-    exit;
-}
+$maintenanceDatabase = [
+    [
+        'quarterNum' => 'Q-01',
+        'quarterName' => 'Bungalow A',
+        'location' => 'Colombo',
+        'quarterType' => 'Bungalows',
+        'status' => 'Under Maintenance',
+        'lastMaint' => '2025-05-12'
+    ],
+    [
+        'quarterNum' => 'Q-03',
+        'quarterName' => 'Staff Flat',
+        'location' => 'Galle',
+        'quarterType' => 'Type I',
+        'status' => 'Under Maintenance',
+        'lastMaint' => '2025-06-05'
+    ]
+];
 
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
 <style>
-    html, body { height: 100%; margin: 0; padding: 0; overflow-y: auto;
-        background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    .container { max-width: 900px; margin: 20px auto; padding: 0 20px; width: 100%; box-sizing: border-box; }
-    .card { background: #ffffff; padding: 35px; border-radius: 15px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.08); border-top: 5px solid #7A1C1C; }
-    .card h2 { color: #1e293b; font-size: 1.5rem; margin-bottom: 20px;
-        text-transform: uppercase; text-align: center; font-weight: 700; }
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    .form-group { margin-bottom: 0; }
-    .form-group.full-width { grid-column: span 2; }
-    .form-group label { display: block; font-weight: 600; color: #475569;
-        margin-bottom: 8px; font-size: 0.9rem; }
-    .form-group input, .form-group select, .form-group textarea { width: 100%;
-        padding: 12px 15px; border: 1px solid #cbd5e1; border-radius: 6px;
-        outline: none; font-size: 0.95rem; box-sizing: border-box; }
-    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
-        border-color: #7A1C1C; box-shadow: 0 0 0 3px rgba(122,28,28,0.1); }
-    .btn-submit { grid-column: span 2; background-color: #7A1C1C; color: white;
-        border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer;
-        font-weight: 600; width: 100%; font-size: 1rem; margin-top: 15px; }
-    .btn-submit:hover { background-color: #5c1414; }
-    .alert-error { background: #fee2e2; color: #991b1b; padding: 12px;
-        border-radius: 8px; margin-bottom: 20px; text-align: center; font-weight: 600; }
-    .back-link { display: inline-flex; align-items: center; gap: 6px; color: #7A1C1C;
-        text-decoration: none; font-weight: 600; margin-bottom: 20px; font-size: 0.85rem; }
+    html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow-y: auto;
+        background-color: #f8fafc;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .container { 
+        max-width: 900px; 
+        margin: 20px auto; 
+        padding: 0 20px; 
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .back-link { 
+        display: inline-flex; 
+        align-items: center; 
+        gap: 6px; 
+        color: #7A1C1C; 
+        text-decoration: none; 
+        font-weight: 600; 
+        margin-bottom: 20px; 
+        font-size: 0.85rem;
+        transition: color 0.2s; 
+    }
+    .back-link:hover { 
+        text-decoration: underline; 
+    }
+
+    .user-profile-wrapper {
+        position: relative;
+        display: inline-block;
+        margin-bottom: 20px;
+    }
+
+    .user-profile-badge {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: #7A1C1C;
+        color: #ffffff;
+        padding: 6px 14px;
+        border-radius: 30px;
+        cursor: pointer;
+        user-select: none;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    .profile-dropdown {
+        display: none;
+        position: absolute;
+        left: 0;
+        top: 105%;
+        background: #ffffff;
+        min-width: 220px;
+        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+        border-radius: 8px;
+        overflow: hidden;
+        z-index: 100;
+        border: 1px solid #e2e8f0;
+    }
+
+    .profile-dropdown.show {
+        display: block;
+    }
+
+    .profile-dropdown a {
+        color: #1e293b;
+        padding: 10px 15px;
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.85rem;
+        transition: background 0.2s;
+    }
+
+    .profile-dropdown a:hover {
+        background: #f1f5f9;
+        color: #7A1C1C;
+    }
+
+    .profile-dropdown a.logout-btn {
+        color: #ef4444;
+    }
+
+    .profile-dropdown a.logout-btn:hover {
+        background: #fee2e2;
+    }
+
+    .card { 
+        background: #ffffff; 
+        padding: 35px; 
+        border-radius: 15px; 
+        box-shadow: 0 10px 25px rgba(0,0,0,0.08); 
+        border-top: 5px solid #7A1C1C; 
+    }
+
+    .card h2 { 
+        color: #1e293b; 
+        font-size: 1.5rem; 
+        margin-bottom: 20px; 
+        text-transform: uppercase; 
+        text-align: center; 
+        font-weight: 700;
+    }
+
+    .form-group { 
+        margin-bottom: 0; 
+    }
+
+    .form-group.full-width { 
+        grid-column: span 2; 
+    }
+
+    .form-group label { 
+        display: block; 
+        font-weight: 600; 
+        color: #475569; 
+        margin-bottom: 8px; 
+        font-size: 0.9rem; 
+    }
+
+    .form-group input, .form-group select { 
+        width: 100%; 
+        padding: 12px 15px; 
+        border: 1px solid #cbd5e1; 
+        border-radius: 6px; 
+        outline: none; 
+        font-size: 0.95rem; 
+        box-sizing: border-box; 
+        background-color: #ffffff;
+    }
+
+    .form-group input:focus, .form-group select:focus { 
+        border-color: #7A1C1C; 
+        box-shadow: 0 0 0 3px rgba(122, 28, 28, 0.1); 
+    }
+
+    .form-row { 
+        display: grid; 
+        grid-template-columns: 1fr 1fr; 
+        gap: 20px; 
+    }
+
+    .btn-submit { 
+        background-color: #7A1C1C; 
+        color: white; 
+        border: none; 
+        padding: 12px 20px; 
+        border-radius: 6px; 
+        cursor: pointer; 
+        font-weight: 600; 
+        width: 100%; 
+        font-size: 1rem; 
+        transition: background 0.2s; 
+        grid-column: span 2;
+    }
+
+    .btn-submit:hover { 
+        background-color: #5c1414; 
+    }
+
+    #successAlert { 
+        display: none; 
+        background-color: #dcfce7; 
+        color: #166534; 
+        padding: 12px 20px; 
+        border-radius: 8px; 
+        margin-bottom: 20px; 
+        font-weight: 600; 
+        border: 1px solid #bbf7d0; 
+        text-align: center; 
+    }
+
+    .custom-modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+        justify-content: center;
+        align-items: center;
+        padding: 15px;
+    }
+
+    .custom-modal-content {
+        background-color: #fff;
+        padding: 30px;
+        border-radius: 12px;
+        width: 100%;
+        max-width: 380px;
+        text-align: center;
+        box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+    }
+
+    .custom-modal-content i {
+        font-size: 2.8rem;
+        color: #7A1C1C;
+        margin-bottom: 15px;
+    }
+
+    .custom-modal-content h3 {
+        color: #1e293b;
+        margin-bottom: 10px;
+        font-size: 1.3rem;
+    }
+
+    .custom-modal-content p {
+        color: #64748b;
+        font-size: 0.95rem;
+        margin-bottom: 20px;
+    }
+
+    .modal-action-btns {
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+    }
+
+    .btn-modal-confirm, .btn-modal-cancel {
+        padding: 8px 15px;
+        border: none;
+        border-radius: 5px;
+        font-weight: 600;
+        cursor: pointer;
+        color: white;
+    }
+
+    .btn-modal-confirm { background-color: #ef4444; }
+    .btn-modal-cancel { background-color: #64748b; }
+
     @media (max-width: 768px) {
-        .form-row { grid-template-columns: 1fr; }
-        .form-group.full-width, .btn-submit { grid-column: span 1; }
+        .form-row {
+            grid-template-columns: 1fr;
+            gap: 15px;
+        }
+        .container {
+            margin: 15px auto;
+            padding: 0 10px;
+        }
+        .form-group.full-width, .btn-submit {
+            grid-column: span 1;
+        }
     }
 </style>
 
 <div class="container">
-    <a href="<?= baseUrl('admin/maintenance.php') ?>" class="back-link">
-        <i class="fa-solid fa-arrow-left"></i> Back to Maintenance List
-    </a>
+    <?php if (isset($_SESSION['admin_name']) || (isset($_SESSION['role']) && $_SESSION['role'] === 'admin')): ?>
+        <a href="maintenance.php" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Maintenance List</a>
+    <?php else: ?>
+        <div class="user-profile-wrapper">
+            <div class="user-profile-badge" onclick="toggleDropdown()">
+                <div style="width: 35px; height: 35px; background: #ffffff; color: #7A1C1C; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.85rem;">
+                    <?php echo htmlspecialchars($userData['initials']); ?>
+                </div>
+                <div>
+                    <div style="font-weight: 600; font-size: 0.9rem;"><?php echo htmlspecialchars($userData['name']); ?></div>
+                </div>
+                <i class="fa-solid fa-chevron-down" style="font-size: 0.75rem; color: #f3e8ff; margin-left: 5px;"></i>
+            </div>
+
+            <div id="profileDropdown" class="profile-dropdown">
+                <a href="edit_profile.php"><i class="fa-solid fa-user-pen"></i> Edit Profile</a>
+                <a href="maintenance.php"><i class="fa-solid fa-arrow-left"></i> Back to Maintenance List</a>
+                <a href="#" class="logout-btn" onclick="openLogoutModal(event)"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
+            </div>
+        </div>
+    <?php endif; ?>
 
     <div class="card">
-        <h2>Edit Maintenance Record</h2>
+        <h2>Edit Maintenance Quarter Record</h2>
+        
+        <div id="successAlert"><i class="fa-solid fa-circle-check"></i> Maintenance record updated successfully!</div>
 
-        <?php if ($error): ?>
-            <div class="alert-error"><?= htmlspecialchars($error) ?></div>
-        <?php endif; ?>
+        <form id="editMaintenanceForm" class="form-row">
+            <div class="form-group">
+                <label for="quarterNum">Quarter No.:</label>
+                <input type="text" id="quarterNum" required>
+            </div>
+            <div class="form-group">
+                <label for="quarterName">Quarter Name:</label>
+                <input type="text" id="quarterName">
+            </div>
 
-        <form method="POST" class="form-row">
             <div class="form-group">
-                <label>Quarter No. *</label>
-                <input type="text" name="quarter_number" required value="<?= htmlspecialchars($row['quarter_number']) ?>">
+                <label for="location">Quarter Location:</label>
+                <input type="text" id="location" required>
             </div>
             <div class="form-group">
-                <label>Quarter Name</label>
-                <input type="text" name="quarter_name" value="<?= htmlspecialchars($row['quarter_name'] ?? '') ?>">
+                <label for="quarterType">Quarter Type:</label>
+                <select id="quarterType" required>
+                    <option value="">-- Select Quarter Type --</option>
+                    <option value="Bungalows">Bungalows</option>
+                    <option value="Type I">Type I</option>
+                    <option value="Type II">Type II</option>
+                    <option value="Type III">Type III</option>
+                </select>
             </div>
+
             <div class="form-group">
-                <label>Quarter Location *</label>
-                <input type="text" name="location_name" required value="<?= htmlspecialchars($row['location_name']) ?>">
-            </div>
-            <div class="form-group">
-                <label>Quarter Type *</label>
-                <select name="quarter_type" required>
-                    <?php foreach (['Bungalows','Type I','Type II','Type III','Row','Flats','Single','Double'] as $t): ?>
-                        <option value="<?= $t ?>" <?= $row['quarter_type'] === $t ? 'selected' : '' ?>><?= $t ?></option>
-                    <?php endforeach; ?>
+                <label for="status">Status:</label>
+                <select id="status" required>
+                    <option value="Under Maintenance">Under Maintenance</option>
+                    <option value="Available">Available</option>
+                    <option value="Occupied">Occupied</option>
                 </select>
             </div>
             <div class="form-group">
-                <label>Status *</label>
-                <select name="maintenance_status" required>
-                    <?php foreach (['Under Maintenance','Repair in Progress','Painting Pending','Electrical Work'] as $s): ?>
-                        <option value="<?= $s ?>" <?= $row['maintenance_status'] === $s ? 'selected' : '' ?>><?= $s ?></option>
-                    <?php endforeach; ?>
-                </select>
+                <label for="lastMaint">Last Maintenance Date:</label>
+                <input type="date" id="lastMaint" required>
             </div>
-            <div class="form-group">
-                <label>Last Maintenance Date</label>
-                <input type="date" name="last_maintenance_date" value="<?= htmlspecialchars($row['last_maintenance_date'] ?? '') ?>">
-            </div>
-            <div class="form-group full-width">
-                <label>Notes</label>
-                <textarea name="notes" rows="3"><?= htmlspecialchars($row['notes'] ?? '') ?></textarea>
-            </div>
-            <button type="submit" class="btn-submit"><i class="fa-solid fa-floppy-disk"></i> Update Changes</button>
+
+            <button type="submit" class="btn-submit"><i class="fa-solid fa-floppy-disk"></i> Update Maintenance Changes</button>
         </form>
     </div>
 </div>
 
-<?php require_once __DIR__ . '/../layouts/admin_footer.php'; ?>
+<div id="logoutModal" class="custom-modal">
+    <div class="custom-modal-content">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <h3>Confirm Logout</h3>
+        <p>Are you sure you want to log out from the Subject Clerk portal?</p>
+        <div class="modal-action-btns">
+            <button type="button" class="btn-modal-cancel" onclick="closeLogoutModal()">Cancel</button>
+            <button type="button" class="btn-modal-confirm" onclick="executeLogout()">Logout</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const serverMaintenanceData = <?php echo json_encode($maintenanceDatabase); ?>;
+
+    function getStoredMaintenanceData() {
+        const data = localStorage.getItem('maintenanceData_v2');
+        let parsed = null;
+        try {
+            parsed = data ? JSON.parse(data) : null;
+        } catch (e) {
+            parsed = null;
+        }
+
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+            localStorage.setItem('maintenanceData_v2', JSON.stringify(serverMaintenanceData));
+            return [...serverMaintenanceData];
+        }
+
+        return parsed;
+    }
+
+    function toggleDropdown() {
+        const dropdown = document.getElementById('profileDropdown');
+        if (dropdown) {
+            dropdown.classList.toggle('show');
+        }
+    }
+
+    window.addEventListener('click', function(e) {
+        if (!e.target.closest('.user-profile-wrapper')) {
+            const dropdown = document.getElementById('profileDropdown');
+            if (dropdown && dropdown.classList.contains('show')) {
+                dropdown.classList.remove('show');
+            }
+        }
+    });
+
+    function openLogoutModal(event) {
+        event.preventDefault();
+        const dropdown = document.getElementById('profileDropdown');
+        if (dropdown) {
+            dropdown.classList.remove('show');
+        }
+        document.getElementById('logoutModal').style.display = 'flex';
+    }
+
+    function closeLogoutModal() {
+        document.getElementById('logoutModal').style.display = 'none';
+    }
+
+    function executeLogout() {
+        window.location.href = "login.php";
+    }
+
+    let editIndex = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        editIndex = urlParams.get('index') ?? urlParams.get('id');
+
+        const maintenanceList = getStoredMaintenanceData();
+        if (editIndex !== null && maintenanceList[editIndex]) {
+            const item = maintenanceList[editIndex];
+            document.getElementById('quarterNum').value = item.quarterNum || '';
+            document.getElementById('quarterName').value = item.quarterName || '';
+            document.getElementById('location').value = item.location || '';
+            document.getElementById('quarterType').value = item.quarterType || '';
+            document.getElementById('status').value = item.status || 'Under Maintenance';
+            document.getElementById('lastMaint').value = item.lastMaint || '';
+        }
+    });
+
+    document.getElementById('editMaintenanceForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        let maintenanceList = getStoredMaintenanceData();
+        if (editIndex !== null && maintenanceList[editIndex]) {
+            maintenanceList[editIndex] = {
+                quarterNum: document.getElementById('quarterNum').value.trim(),
+                quarterName: document.getElementById('quarterName').value.trim(),
+                location: document.getElementById('location').value.trim(),
+                quarterType: document.getElementById('quarterType').value,
+                status: document.getElementById('status').value,
+                lastMaint: document.getElementById('lastMaint').value
+            };
+
+            localStorage.setItem('maintenanceData_v2', JSON.stringify(maintenanceList));
+
+            const alertBox = document.getElementById('successAlert');
+            alertBox.style.display = 'block';
+
+            setTimeout(() => {
+                window.location.href = "maintenance.php";
+            }, 1500);
+        }
+    });
+</script>
+
+<?php
+require_once __DIR__ . '/../layouts/admin_footer.php';
+?>
