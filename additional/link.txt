@@ -1,1 +1,4 @@
 http://localhost/Quarters_Management_System-V2/Quarters_Management_System-V2/
+
+Most of the admin functions are functional now. Only have to Correct the Waiting List tab.
+Waiting list tab should be fixed.

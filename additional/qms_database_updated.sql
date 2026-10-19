@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 19, 2026 at 09:14 AM
+-- Generation Time: Oct 19, 2026 at 10:43 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -22,6 +22,30 @@ SET time_zone = "+00:00";
 --
 CREATE DATABASE IF NOT EXISTS `qms_database_updated` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 USE `qms_database_updated`;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `allocated_quarters`
+--
+
+DROP TABLE IF EXISTS `allocated_quarters`;
+CREATE TABLE IF NOT EXISTS `allocated_quarters` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `nic` varchar(20) NOT NULL,
+  `computer_no` varchar(50) NOT NULL,
+  `quarter_no` varchar(50) NOT NULL,
+  `quarter_name` varchar(100) DEFAULT NULL,
+  `quarter_location` varchar(100) NOT NULL,
+  `quarter_type` varchar(100) NOT NULL,
+  `resident_name` varchar(150) NOT NULL,
+  `designation` varchar(100) NOT NULL,
+  `workplace` varchar(150) NOT NULL,
+  `allocated_date` date NOT NULL,
+  `other` text DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `nic` (`nic`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -590,14 +614,14 @@ CREATE TABLE IF NOT EXISTS `quarters` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_quarter_location_number` (`location_name`,`quarter_number`),
   KEY `idx_quarters_type` (`quarter_type`)
-) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `quarters`
 --
 
 INSERT INTO `quarters` (`id`, `quarter_number`, `quarter_name`, `location_name`, `quarter_address`, `quarter_type`, `quarter_division`, `quarter_ownership`, `quarter_area`, `quarter_assessment_rent`, `is_active`, `quarter_status`, `has_electricity`, `has_water`, `sort_order`, `created_at`) VALUES
-(1, 'A-101', 'Bungalows - A-101', 'Colombo Fort', 'Colombo Fort, Sri Lanka', 'Bungalows', 'Way & Works', 'Railway Department', '800 sq.ft', 3500.00, 1, 'Available', 1, 1, 1, '2026-10-12 06:38:41'),
+(1, 'A-10156', 'Bungalows - A-101', 'Colombo Fort', 'Colombo Fort, Sri Lanka', 'Bungalows', 'Way & Works test', 'Railway Department', '800 sq.ft', 3500.00, 1, 'Available', 1, 1, 1, '2026-10-12 06:38:41'),
 (2, 'B-205', 'Flats - B-205', 'Maradana', 'Maradana, Sri Lanka', 'Flats', 'Way & Works', 'Railway Department', '800 sq.ft', 3500.00, 1, 'Available', 1, 1, 2, '2026-10-12 06:38:41'),
 (3, 'K-014', 'Double - K-014', 'Kandy', 'Kandy, Sri Lanka', 'Double', 'Way & Works', 'Railway Department', '800 sq.ft', 3500.00, 1, 'Available', 1, 1, 3, '2026-10-12 06:38:41'),
 (4, 'G-022', 'Single - G-022', 'Galle', 'Galle, Sri Lanka', 'Single', 'Way & Works', 'Railway Department', '800 sq.ft', 3500.00, 1, 'Available', 1, 1, 4, '2026-10-12 06:38:41'),
