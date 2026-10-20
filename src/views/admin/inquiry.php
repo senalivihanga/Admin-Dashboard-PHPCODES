@@ -16,53 +16,72 @@ $userData = [
     'initials' => 'SC'
 ];
 
-$inquiriesData = [
-    [
-        'nic' => '883421092V',
-        'name' => 'A. B. Perera',
-        'complaint' => 'Low water pressure during morning hours in the kitchen area.',
-        'issueType' => 'Water Supply',
-        'issueClass' => 'issue-water',
-        'issueIcon' => 'fa-droplet',
-        'date' => '2026-09-08',
-        'status' => 'Pending',
-        'statusClass' => 'status-pending',
-        'statusIcon' => 'fa-clock'
-    ],
-    [
-        'nic' => '925631485V',
-        'name' => 'S. K. Silva',
-        'complaint' => 'Main street light pole outside quarter gate is flickering continuously.',
-        'issueType' => 'Electricity / Light',
-        'issueClass' => 'issue-electricity',
-        'issueIcon' => 'fa-bolt',
-        'date' => '2026-09-06',
-        'status' => 'In Progress',
-        'statusClass' => 'status-progress',
-        'statusIcon' => 'fa-spinner fa-spin'
-    ],
-    [
-        'nic' => '951234789V',
-        'name' => 'M. N. Fernando',
-        'complaint' => 'Bathroom window latch is broken and needs replacement.',
-        'issueType' => 'Quarter Maintenance',
-        'issueClass' => 'issue-maintenance',
-        'issueIcon' => 'fa-house-chimney-crack',
-        'date' => '2026-09-01',
-        'status' => 'Resolved',
-        'statusClass' => 'status-resolved',
-        'statusIcon' => 'fa-check'
-    ]
+// --- Fetch complaints from the database ---
+$conn = getDBConnection();
+
+// Issue type metadata map (colour class + icon) keyed by related_issue value
+$issueMeta = [
+    'Water Supply'        => ['class' => 'issue-water',       'icon' => 'fa-droplet'],
+    'water'               => ['class' => 'issue-water',       'icon' => 'fa-droplet'],
+    'Electricity / Light' => ['class' => 'issue-electricity', 'icon' => 'fa-bolt'],
+    'electricity'         => ['class' => 'issue-electricity', 'icon' => 'fa-bolt'],
+    'Quarter Maintenance' => ['class' => 'issue-maintenance', 'icon' => 'fa-house-chimney-crack'],
+    'maintenance'         => ['class' => 'issue-maintenance', 'icon' => 'fa-house-chimney-crack'],
 ];
 
-// Handle Search Filter matching appli-approve-IB style[cite: 21, 22]
-$searchQuery = trim($_GET['search'] ?? '');
-$displayData = $inquiriesData;
+// Status metadata map (colour class + icon) keyed by complaints.status value
+$statusMeta = [
+    'Pending'     => ['class' => 'status-pending',  'icon' => 'fa-clock'],
+    'In Progress' => ['class' => 'status-progress', 'icon' => 'fa-spinner fa-spin'],
+    'Resolved'    => ['class' => 'status-resolved', 'icon' => 'fa-check'],
+];
 
-if (!empty($searchQuery)) {
-    $displayData = array_filter($displayData, function($item) use ($searchQuery) {
-        return stripos($item['nic'], $searchQuery) !== false || stripos($item['name'], $searchQuery) !== false;
-    });
+$searchQuery = trim($_GET['search'] ?? '');
+
+$sql = "SELECT c.id,
+               c.user_id AS nic,
+               u.name,
+               c.complaints AS complaint,
+               c.related_issue AS issueType,
+               DATE(c.created_at) AS date,
+               c.status
+        FROM complaints AS c
+        LEFT JOIN users AS u ON u.nic = c.user_id";
+
+if ($searchQuery !== '') {
+    $sql .= " WHERE c.user_id LIKE ? OR u.name LIKE ?";
+    $searchTerm = '%' . $searchQuery . '%';
+    $stmt = $conn->prepare($sql . ' ORDER BY c.created_at DESC, c.id DESC');
+    $stmt->bind_param('ss', $searchTerm, $searchTerm);
+} else {
+    $stmt = $conn->prepare($sql . ' ORDER BY c.created_at DESC, c.id DESC');
+}
+$stmt->execute();
+$rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
+
+// Build the display array with resolved class / icon metadata
+$displayData = [];
+foreach ($rows as $row) {
+    $issueKey = $row['issueType'] ?? '';
+    $issue = $issueMeta[$issueKey] ?? ['class' => 'issue-other', 'icon' => 'fa-circle-info'];
+
+    $statusKey = $row['status'] ?? 'Pending';
+    $status = $statusMeta[$statusKey] ?? $statusMeta['Pending'];
+
+    $displayData[] = [
+        'nic'         => $row['nic'] ?? '',
+        'name'        => $row['name'] ?? 'Unknown',
+        'complaint'   => $row['complaint'] ?? '',
+        'issueType'   => $issueKey !== '' ? $issueKey : 'Other',
+        'issueClass'  => $issue['class'],
+        'issueIcon'   => $issue['icon'],
+        'date'        => $row['date'] ?? '-',
+        'status'      => $statusKey,
+        'statusClass' => $status['class'],
+        'statusIcon'  => $status['icon']
+    ];
 }
 
 require_once __DIR__ . '/../layouts/admin_header.php';

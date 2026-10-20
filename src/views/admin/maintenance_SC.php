@@ -16,54 +16,32 @@ $userData = [
     'initials' => 'SC'
 ];
 
-$maintenanceData = [
-    [
-        'quarterNum' => 'Q-101',
-        'location' => 'Colombo Fort',
-        'quarterName' => 'Station View Bungalow',
-        'quarterType' => 'Grade I',
-        'status' => 'Under Maintenance',
-        'lastMaint' => '2026-01-15'
-    ],
-    [
-        'quarterNum' => 'Q-102',
-        'location' => 'Maradana',
-        'quarterName' => 'Yard Master Quarters',
-        'quarterType' => 'Grade II',
-        'status' => 'Under Maintenance',
-        'lastMaint' => '2026-02-10'
-    ],
-    [
-        'quarterNum' => 'Q-103',
-        'location' => 'Gampaha',
-        'quarterName' => 'Suburban Quarters',
-        'quarterType' => 'Grade III',
-        'status' => 'Repair in Progress',
-        'lastMaint' => '2026-03-05'
-    ],
-    [
-        'quarterNum' => 'Q-104',
-        'location' => 'Kandy',
-        'quarterName' => 'Station Staff Quarters',
-        'quarterType' => 'Grade II',
-        'status' => 'Painting Pending',
-        'lastMaint' => '2026-04-12'
-    ]
-];
+// --- Fetch maintenance records from the database ---
+$conn = getDBConnection();
+$searchQuery = trim($_GET['search'] ?? '');
 
-$searchQuery = isset($_GET['search']) ? trim($_GET['search']) : '';
-$filteredData = [];
-
-$searchTermLower = strtolower($searchQuery);
-
-foreach ($maintenanceData as $item) {
-    $status = strtolower($item['status'] ?? '');
-    if (strpos($status, 'maintenance') !== false || strpos($status, 'repair') !== false || strpos($status, 'painting') !== false || strpos($status, 'electrical') !== false) {
-        if ($searchTermLower === '' || strpos(strtolower($item['quarterNum']), $searchTermLower) !== false || strpos(strtolower($item['quarterName']), $searchTermLower) !== false) {
-            $filteredData[] = $item;
-        }
-    }
+if ($searchQuery !== '') {
+    $like = '%' . $searchQuery . '%';
+    $stmt = $conn->prepare(
+        "SELECT id, quarter_number, quarter_name, location_name, quarter_type,
+                maintenance_status, last_maintenance_date, notes, created_at
+           FROM maintenance
+          WHERE quarter_number LIKE ? OR quarter_name LIKE ? OR location_name LIKE ?
+          ORDER BY id ASC"
+    );
+    $stmt->bind_param("sss", $like, $like, $like);
+} else {
+    $stmt = $conn->prepare(
+        "SELECT id, quarter_number, quarter_name, location_name, quarter_type,
+                maintenance_status, last_maintenance_date, notes, created_at
+           FROM maintenance
+          ORDER BY id ASC"
+    );
 }
+$stmt->execute();
+$filteredData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
 
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
@@ -406,12 +384,12 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                         <?php foreach ($filteredData as $index => $item): ?>
                             <tr>
                                 <td><?php echo $index + 1; ?></td>
-                                <td><strong><?php echo htmlspecialchars($item['quarterNum']); ?></strong></td>
-                                <td><?php echo htmlspecialchars($item['quarterName']); ?></td>
-                                <td><?php echo htmlspecialchars($item['location']); ?></td>
-                                <td><?php echo htmlspecialchars($item['quarterType']); ?></td>
-                                <td><span class="status-badge status-maintenance"><?php echo htmlspecialchars($item['status']); ?></span></td>
-                                <td><?php echo htmlspecialchars($item['lastMaint']); ?></td>
+                                <td><strong><?php echo htmlspecialchars($item['quarter_number'] ?? 'N/A'); ?></strong></td>
+                                <td><?php echo htmlspecialchars($item['quarter_name'] ?? '-'); ?></td>
+                                <td><?php echo htmlspecialchars($item['location_name'] ?? 'N/A'); ?></td>
+                                <td><?php echo htmlspecialchars($item['quarter_type'] ?? 'N/A'); ?></td>
+                                <td><span class="status-badge status-maintenance"><?php echo htmlspecialchars($item['maintenance_status'] ?? 'Under Maintenance'); ?></span></td>
+                                <td><?php echo htmlspecialchars($item['last_maintenance_date'] ?? 'Not Recorded'); ?></td>
                             </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>

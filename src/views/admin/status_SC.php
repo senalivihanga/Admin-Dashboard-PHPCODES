@@ -16,46 +16,98 @@ $userData = [
     'initials' => 'SC'
 ];
 
-$statusData = [
-    [
-        'appNo' => 'SLR/AOT/2026/0001',
-        'nic' => '854712093V',
-        'computerNo' => '4021',
-        'name' => 'H. M. Gunawardena',
-        'designation' => 'Station Master',
-        'subDate' => '2026-09-07',
-        'quarterType' => 'Grade B Quarters',
-        'reqDate' => '2026-09-06',
-        'statusType' => 'status-boss',
-        'statusText' => '<i class="fa-solid fa-clock"></i> 2. Immediate Boss'
-    ],
-    [
-        'appNo' => 'SLR/AOT/2026/0002',
-        'nic' => '901245678V',
-        'computerNo' => '4189',
-        'name' => 'P. R. Jayasinghe',
-        'designation' => 'Permanent Way Inspector',
-        'subDate' => '2026-09-05',
-        'quarterType' => 'Grade A Quarters',
-        'reqDate' => '2026-09-04',
-        'statusType' => 'status-submit',
-        'statusText' => '<i class="fa-solid fa-check"></i> 1. Application Submit'
-    ],
-    [
-        'appNo' => 'SLR/AOT/2026/0003',
-        'nic' => '934512786V',
-        'computerNo' => '5024',
-        'name' => 'K. L. Wickramasinghe',
-        'designation' => 'Locomotive Driver',
-        'subDate' => '2026-08-30',
-        'quarterType' => 'Grade C Quarters',
-        'reqDate' => '2026-08-28',
-        'statusType' => 'status-clerk',
-        'statusText' => '<i class="fa-solid fa-user-pen"></i> 4. Subject Clerk'
-    ]
-];
+// --- Fetch real applications from the database ---
+$conn = getDBConnection();
+$sql = "SELECT a.id,
+               a.application_no,
+               a.nic,
+               a.computer_no,
+               a.quarter_type,
+               a.application_date,
+               a.application_submitted_at,
+               a.created_at,
+               a.application_status,
+               a.boss_status,
+               a.file_status,
+               a.clerk_status,
+               a.branch_status,
+               a.final_status,
+               u.name,
+               u.applicant_designation
+        FROM applications AS a
+        INNER JOIN users AS u ON u.nic = a.nic
+        WHERE a.application_status IN ('submitted', 'pending_clerk', 'pending_super', 'approved', 'rejected', 'returned_to_boss', 'returned_to_file')
+        ORDER BY a.application_date DESC, a.id DESC";
 
-// Handle Search Filter matching appli-approve-IB style
+$result = $conn->query($sql);
+$statusData = [];
+$counter = 0;
+
+while ($row = $result->fetch_assoc()) {
+    $counter++;
+
+    // Determine the current workflow stage / status
+    $appStatus = $row['application_status'];
+    $statusType = 'status-submit';
+    $statusText = '<i class="fa-solid fa-check"></i> 1. Application Submit';
+
+    if ($appStatus === 'returned_to_boss') {
+        $statusType = 'status-boss';
+        $statusText = '<i class="fa-solid fa-rotate-left"></i> Returned to Immediate Boss';
+    } elseif ($appStatus === 'returned_to_file') {
+        $statusType = 'status-clerk';
+        $statusText = '<i class="fa-solid fa-rotate-left"></i> Returned to Personal File';
+    } elseif ($appStatus === 'rejected') {
+        $statusType = 'status-clerk';
+        $statusText = '<i class="fa-solid fa-ban"></i> Rejected';
+    } elseif ($appStatus === 'approved') {
+        $statusType = 'status-submit';
+        $statusText = '<i class="fa-solid fa-check"></i> Final Approved';
+    } elseif ($appStatus === 'pending_super') {
+        $statusType = 'status-clerk';
+        $statusText = '<i class="fa-solid fa-clock"></i> 3. Deputy Superintendent (Pending)';
+    } elseif ($appStatus === 'pending_clerk') {
+        if ($row['boss_status'] === 'approved' && $row['file_status'] === 'approved') {
+            // Waiting for the Subject Clerk decision
+            $statusType = 'status-clerk';
+            $statusText = '<i class="fa-solid fa-clock"></i> 4. Subject Clerk (Pending)';
+        } elseif ($row['boss_status'] === 'approved' && $row['file_status'] === 'pending') {
+            // Waiting for Personal File decision
+            $statusType = 'status-clerk';
+            $statusText = '<i class="fa-solid fa-clock"></i> 3. Personal File (Pending)';
+        } else {
+            $statusType = 'status-boss';
+            $statusText = '<i class="fa-solid fa-clock"></i> 2. Immediate Boss (Pending)';
+        }
+    } else {
+        // submitted / default
+        if ($row['boss_status'] === 'approved') {
+            $statusType = 'status-boss';
+            $statusText = '<i class="fa-solid fa-check"></i> 2. Immediate Boss (Approved)';
+        } else {
+            $statusType = 'status-boss';
+            $statusText = '<i class="fa-solid fa-clock"></i> 2. Immediate Boss (Pending)';
+        }
+    }
+
+    $statusData[] = [
+        'appNo' => $row['application_no'] ?? (string)$row['id'],
+        'nic' => $row['nic'],
+        'computerNo' => $row['computer_no'],
+        'name' => $row['name'],
+        'designation' => $row['applicant_designation'] ?? '',
+        'subDate' => $row['application_submitted_at']
+            ? date('Y-m-d', strtotime($row['application_submitted_at']))
+            : ($row['created_at'] ? date('Y-m-d', strtotime($row['created_at'])) : '-'),
+        'quarterType' => $row['quarter_type'],
+        'reqDate' => $row['application_date'],
+        'statusType' => $statusType,
+        'statusText' => $statusText
+    ];
+}
+$conn->close();
+
+// Handle Search Filter
 $searchQuery = trim($_GET['search'] ?? '');
 $displayData = $statusData;
 

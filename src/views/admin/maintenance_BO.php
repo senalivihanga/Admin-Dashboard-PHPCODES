@@ -10,64 +10,34 @@ if (session_status() === PHP_SESSION_NONE) {
 
 $pageTitle = "Quarters Maintenance - Sri Lanka Railways";
 
-// Initialize Dummy Data in Session if not already set[cite: 10]
-if (!isset($_SESSION['quartersData'])) {
-    $_SESSION['quartersData'] = [
-        [
-            'quarterNum' => 'Q-101',
-            'location' => 'Colombo Fort',
-            'quarterName' => 'Station View Bungalow',
-            'quarterType' => 'Grade I',
-            'status' => 'Under Maintenance',
-            'lastMaint' => '2026-01-15'
-        ],
-        [
-            'quarterNum' => 'Q-102',
-            'location' => 'Maradana',
-            'quarterName' => 'Yard Master Quarters',
-            'quarterType' => 'Grade II',
-            'status' => 'Under Maintenance',
-            'lastMaint' => '2026-02-10'
-        ],
-        [
-            'quarterNum' => 'Q-103',
-            'location' => 'Gampaha',
-            'quarterName' => 'Suburban Quarters',
-            'quarterType' => 'Grade III',
-            'status' => 'Repair in Progress',
-            'lastMaint' => '2026-03-05'
-        ],
-        [
-            'quarterNum' => 'Q-104',
-            'location' => 'Kandy',
-            'quarterName' => 'Station Staff Quarters',
-            'quarterType' => 'Grade II',
-            'status' => 'Painting Pending',
-            'lastMaint' => '2026-04-12'
-        ]
-    ];
-}
-
+// --- Fetch maintenance records from the database ---
+$conn = getDBConnection();
 $searchQuery = trim($_GET['search'] ?? '');
-$allQuarters = $_SESSION['quartersData'];
 
-$maintData = [];
-foreach ($allQuarters as $item) {
-    $status = strtolower($item['status'] ?? '');
-    if (strpos($status, 'maintenance') !== false || strpos($status, 'repair') !== false || strpos($status, 'painting') !== false || strpos($status, 'electrical') !== false) {
-        if ($searchQuery !== '') {
-            $qNum = strtolower($item['quarterNum'] ?? '');
-            $qName = strtolower($item['quarterName'] ?? '');
-            if (strpos($qNum, strtolower($searchQuery)) !== false || strpos($qName, strtolower($searchQuery)) !== false) {
-                $maintData[] = $item;
-            }
-        } else {
-            $maintData[] = $item;
-        }
-    }
+if ($searchQuery !== '') {
+    $like = '%' . $searchQuery . '%';
+    $stmt = $conn->prepare(
+        "SELECT id, quarter_number, quarter_name, location_name, quarter_type,
+                maintenance_status, last_maintenance_date, notes, created_at
+           FROM maintenance
+          WHERE quarter_number LIKE ? OR quarter_name LIKE ? OR location_name LIKE ?
+          ORDER BY id ASC"
+    );
+    $stmt->bind_param("sss", $like, $like, $like);
+} else {
+    $stmt = $conn->prepare(
+        "SELECT id, quarter_number, quarter_name, location_name, quarter_type,
+                maintenance_status, last_maintenance_date, notes, created_at
+           FROM maintenance
+          ORDER BY id ASC"
+    );
 }
+$stmt->execute();
+$maintData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
 
-// Admin Header include[cite: 10]
+// Admin Header include
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
 
@@ -322,12 +292,12 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                     <?php foreach ($maintData as $index => $item): ?>
                         <tr>
                             <td><?php echo $index + 1; ?></td>
-                            <td><?php echo htmlspecialchars($item['quarterNum'] ?? '-'); ?></td>
-                            <td><?php echo htmlspecialchars($item['quarterName'] ?? '-'); ?></td>
-                            <td><?php echo htmlspecialchars($item['location'] ?? '-'); ?></td>
-                            <td><?php echo htmlspecialchars($item['quarterType'] ?? '-'); ?></td>
-                            <td><span class="status-badge status-maintenance"><?php echo htmlspecialchars($item['status'] ?? 'Under Maintenance'); ?></span></td>
-                            <td><?php echo htmlspecialchars($item['lastMaint'] ?? 'Not Recorded'); ?></td>
+                            <td><?php echo htmlspecialchars($item['quarter_number'] ?? '-'); ?></td>
+                            <td><?php echo htmlspecialchars($item['quarter_name'] ?? '-'); ?></td>
+                            <td><?php echo htmlspecialchars($item['location_name'] ?? '-'); ?></td>
+                            <td><?php echo htmlspecialchars($item['quarter_type'] ?? '-'); ?></td>
+                            <td><span class="status-badge status-maintenance"><?php echo htmlspecialchars($item['maintenance_status'] ?? 'Under Maintenance'); ?></span></td>
+                            <td><?php echo htmlspecialchars($item['last_maintenance_date'] ?? 'Not Recorded'); ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -337,6 +307,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 </div>
 
 <?php
-// Admin Footer include[cite: 10]
+// Admin Footer include
 require_once __DIR__ . '/../layouts/admin_footer.php';
 ?>

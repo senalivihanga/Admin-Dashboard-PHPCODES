@@ -10,23 +10,27 @@ if (session_status() === PHP_SESSION_NONE) {
 
 $pageTitle = "Quarters Details - Sri Lanka Railways Admin";
 
-// Quarters default data array[cite: 11]
-$quartersData = [
-    ["quarterNum" => "Q-01", "quarterName" => "Bungalow A", "division" => "Way & Works", "ownership" => "Railway Department", "quarterArea" => "1,450 sq.ft", "location" => "Colombo", "address" => "No. 12, Railway Avenue, Colombo 10", "quarterType" => "Bungalows", "assessmentRent" => "5,500.00", "status" => "Under Maintenance", "electric" => true, "water" => true],
-    ["quarterNum" => "Q-02", "quarterName" => "Type II House", "division" => "Signal & Telecommunication", "ownership" => "Railway Department", "quarterArea" => "950 sq.ft", "location" => "Kandy", "address" => "No. 8, Peradeniya Road, Kandy", "quarterType" => "Type II", "assessmentRent" => "4,200.00", "status" => "Available", "electric" => true, "water" => true],
-    ["quarterNum" => "Q-03", "quarterName" => "Staff Flat", "division" => "Electrical", "ownership" => "Railway Department", "quarterArea" => "800 sq.ft", "location" => "Galle", "address" => "No. 22, Fort Road, Galle", "quarterType" => "Type I", "assessmentRent" => "3,900.00", "status" => "Occupied", "electric" => true, "water" => false],
-    ["quarterNum" => "Q-04", "quarterName" => "Annex Unit", "division" => "Mechanical", "ownership" => "Railway Department", "quarterArea" => "600 sq.ft", "location" => "Anuradhapura", "address" => "No. 45, Station Road, Anuradhapura", "quarterType" => "Type III", "assessmentRent" => "2,750.00", "status" => "Available", "electric" => false, "water" => true]
-];
+// --- Fetch all quarters from the database ---
+$conn = getDBConnection();
+$result = $conn->query("SELECT * FROM quarters ORDER BY id ASC");
+$quartersData = [];
+if ($result && $result->num_rows > 0) {
+    while ($row = $result->fetch_assoc()) {
+        $quartersData[] = $row;
+    }
+}
+$conn->close();
 
-// Search filter handling in PHP[cite: 11]
+// Search filter handling in PHP
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 if ($search !== '') {
     $quartersData = array_filter($quartersData, function($item) use ($search) {
-        return stripos($item['quarterNum'], $search) !== false || stripos($item['quarterName'], $search) !== false;
+        return stripos($item['quarter_number'] ?? '', $search) !== false
+            || stripos($item['quarter_name'] ?? '', $search) !== false;
     });
 }
 
-// Header include[cite: 11]
+// Header include
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
 <style>
@@ -275,27 +279,31 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                 <tbody>
                     <?php if (count($quartersData) > 0): ?>
                         <?php $counter = 1; foreach ($quartersData as $item): ?>
+                            <?php
+                                $electric = !empty($item['has_electricity']);
+                                $water    = !empty($item['has_water']);
+                            ?>
                             <tr>
                                 <td><?php echo $counter++; ?></td>
-                                <td><strong><?php echo htmlspecialchars($item['quarterNum'] ?? 'N/A'); ?></strong></td>
-                                <td><?php echo htmlspecialchars($item['quarterName'] ?? 'N/A'); ?></td>
-                                <td><?php echo htmlspecialchars($item['division'] ?? 'N/A'); ?></td>
-                                <td><?php echo htmlspecialchars($item['ownership'] ?? 'N/A'); ?></td>
-                                <td><?php echo htmlspecialchars($item['quarterArea'] ?? 'N/A'); ?></td>
-                                <td><?php echo htmlspecialchars($item['location'] ?? 'N/A'); ?></td>
-                                <td><?php echo htmlspecialchars($item['address'] ?? 'N/A'); ?></td>
-                                <td><?php echo htmlspecialchars($item['quarterType'] ?? 'N/A'); ?></td>
-                                <td>Rs. <?php echo htmlspecialchars($item['assessmentRent'] ?? '0.00'); ?></td>
+                                <td><strong><?php echo htmlspecialchars($item['quarter_number'] ?? 'N/A'); ?></strong></td>
+                                <td><?php echo htmlspecialchars($item['quarter_name'] ?? 'N/A'); ?></td>
+                                <td><?php echo htmlspecialchars($item['quarter_division'] ?? 'N/A'); ?></td>
+                                <td><?php echo htmlspecialchars($item['quarter_ownership'] ?? 'N/A'); ?></td>
+                                <td><?php echo htmlspecialchars($item['quarter_area'] ?? 'N/A'); ?></td>
+                                <td><?php echo htmlspecialchars($item['location_name'] ?? 'N/A'); ?></td>
+                                <td><?php echo htmlspecialchars($item['quarter_address'] ?? 'N/A'); ?></td>
+                                <td><?php echo htmlspecialchars($item['quarter_type'] ?? 'N/A'); ?></td>
+                                <td>Rs. <?php echo htmlspecialchars(number_format((float)($item['quarter_assessment_rent'] ?? 0), 2)); ?></td>
                                 <td>
-                                    <span style="font-weight: 600; color: <?php echo ($item['status'] === 'Available') ? '#166534' : (($item['status'] === 'Occupied') ? '#1e40af' : '#d97706'); ?>;">
-                                        <?php echo htmlspecialchars($item['status'] ?? 'N/A'); ?>
+                                    <span style="font-weight: 600; color: <?php echo ($item['quarter_status'] === 'Available') ? '#166534' : (($item['quarter_status'] === 'Occupied') ? '#1e40af' : '#d97706'); ?>;">
+                                        <?php echo htmlspecialchars($item['quarter_status'] ?? 'N/A'); ?>
                                     </span>
                                 </td>
                                 <td>
                                     <div class="facility-container">
                                         <div class="facility-item">
                                             <span>Electricity</span>
-                                            <?php if ($item['electric']): ?>
+                                            <?php if ($electric): ?>
                                                 <span class="badge badge-active">Available</span>
                                             <?php else: ?>
                                                 <span class="badge badge-inactive">Unavailable</span>
@@ -303,7 +311,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                                         </div>
                                         <div class="facility-item">
                                             <span>Water</span>
-                                            <?php if ($item['water']): ?>
+                                            <?php if ($water): ?>
                                                 <span class="badge badge-active">Available</span>
                                             <?php else: ?>
                                                 <span class="badge badge-inactive">Unavailable</span>
@@ -325,6 +333,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 </main>
 
 <?php
-// Footer include[cite: 11]
+// Footer include
 require_once __DIR__ . '/../layouts/admin_footer.php';
 ?>
