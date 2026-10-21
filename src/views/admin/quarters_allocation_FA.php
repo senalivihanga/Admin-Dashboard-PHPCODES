@@ -44,10 +44,11 @@ $sql = "SELECT
         FROM allocated_quarters AS aq
    LEFT JOIN users    AS u ON u.nic = aq.nic
    LEFT JOIN quarters AS q ON q.quarter_number = aq.quarter_no
-                         AND q.location_name  = aq.quarter_location";
+                         AND q.location_name  = aq.quarter_location
+        WHERE aq.source = 'normal'";
 
 if ($searchQuery !== '') {
-    $sql .= " WHERE (aq.nic LIKE ?
+    $sql .= " AND (aq.nic LIKE ?
                  OR aq.computer_no LIKE ?
                  OR aq.quarter_no LIKE ?
                  OR aq.quarter_name LIKE ?

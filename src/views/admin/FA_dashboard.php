@@ -418,13 +418,22 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                 <span class="tile-link-text">Manage Allocations <i class="fa-solid fa-arrow-right"></i></span>
             </a>
 
-            <a href="direct_allocation_FA.php" class="manage-tile">
+            <a href="add_allocated_quarter.php" class="manage-tile">
                 <div class="manage-tile-header">
                     <h4>Direct Quarter Allocation</h4>
                     <i class="fa-solid fa-hand-holding-heart" style="color: #059669;"></i>
                 </div>
                 <p>Allocate quarters directly under FA's discretion and submit applicant personal details into the system.</p>
                 <span class="tile-link-text">Open Allocation Form <i class="fa-solid fa-arrow-right"></i></span>
+            </a>
+
+            <a href="direct_allocations.php" class="manage-tile">
+                <div class="manage-tile-header">
+                    <h4>Direct Allocations (Audit)</h4>
+                    <i class="fa-solid fa-list-check" style="color: #7c3aed;"></i>
+                </div>
+                <p>View direct allocations and continue their applications.</p>
+                <span class="tile-link-text">Open Audit List <i class="fa-solid fa-arrow-right"></i></span>
             </a>
         </div>
 

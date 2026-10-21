@@ -63,7 +63,8 @@ $aRes = $conn->query(
             COALESCE(name, '')                              AS name,
             COALESCE(computer_number, '')                   AS computer_number,
             COALESCE(applicant_designation, '')             AS applicant_designation,
-            COALESCE(applicant_current_work_station, '')    AS applicant_current_work_station
+            COALESCE(applicant_current_work_station, '')    AS applicant_current_work_station,
+            COALESCE(mobile, '')                            AS mobile
        FROM users
       WHERE role_id = 1"
 );
@@ -85,9 +86,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $workplace     = trim($_POST['workplace']    ?? '');
     $allocatedDate = $_POST['allocatedDate']     ?? date('Y-m-d');
     $other         = trim($_POST['other']        ?? '') ?: 'None';
+    $allocationSource = (int)($_SESSION['role_id'] ?? 0) === 7 ? 'direct' : 'normal';
 
     if (!$quarterId || $nic === '' || $computerNo === '' || $residentName === '') {
         $message = 'Please fill in all required fields and select a quarter.';
+    } elseif ($allocationSource === 'direct' && !isset($applicants[$nic])) {
+        $message = 'The NIC must belong to a registered applicant before a direct allocation can be created.';
     } else {
         // Re-verify the quarter on the server (never trust the client)
         $qStmt = $conn->prepare(
@@ -112,11 +116,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     "INSERT INTO allocated_quarters
                         (nic, computer_no, quarter_no, quarter_name, quarter_location,
                          quarter_type, resident_name, designation, workplace,
-                         allocated_date, other)
-                     VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+                         allocated_date, other, source)
+                     VALUES (?,?,?,?,?,?,?,?,?,?,?, ?)"
                 );
                 $ins->bind_param(
-                    'sssssssssss',
+                    'ssssssssssss',
                     $nic,
                     $computerNo,
                     $quarter['quarter_number'],
@@ -127,15 +131,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $designation,
                     $workplace,
                     $allocatedDate,
-                    $other
+                    $other,
+                    $allocationSource
                 );
                 $ins->execute();
+                $allocationId = (int)$ins->insert_id;
                 $ins->close();
 
                 // 2. Mark quarter as Occupied
-                $upd = $conn->prepare("UPDATE quarters SET quarter_status = 'Occupied' WHERE id = ?");
+                $upd = $conn->prepare("UPDATE quarters SET quarter_status = 'Occupied' WHERE id = ? AND quarter_status = 'Available'");
                 $upd->bind_param('i', $quarterId);
                 $upd->execute();
+                if ($upd->affected_rows !== 1) {
+                    $upd->close();
+                    throw new RuntimeException('This quarter is no longer available.');
+                }
                 $upd->close();
 
                 // 3. Persist any admin edits back into the users table
@@ -153,7 +163,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $conn->commit();
                 $conn->close();
 
-                header('Location: allocated_quarters.php');
+                if ($allocationSource === 'direct') {
+                    $_SESSION['direct_alloc'] = [
+                        'allocation_id' => $allocationId,
+                        'nic'           => $nic,
+                        'computer_no'   => $computerNo,
+                        'phone_no'      => $applicants[$nic]['mobile'] ?? '',
+                        'resident'      => $residentName,
+                        'designation'   => $designation,
+                        'workplace'     => $workplace,
+                        'quarter_no'    => $quarter['quarter_number'],
+                        'quarter_name'  => $quarter['quarter_name'],
+                        'quarter_loc'   => $quarter['location_name'],
+                        'quarter_type'  => $quarter['quarter_type'],
+                    ];
+                    header('Location: ' . baseUrl('application/form/en?direct=1'));
+                } else {
+                    header('Location: allocated_quarters.php');
+                }
                 exit();
             } catch (Throwable $e) {
                 $conn->rollback();
@@ -303,6 +330,11 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     <a href="allocated_quarters.php" class="back-link">
         <i class="fa-solid fa-arrow-left"></i> Back to List
     </a>
+    <?php if ((int)($_SESSION['role_id'] ?? 0) === 7): ?>
+        <a href="direct_allocations.php" class="back-link" style="margin-left:12px;">
+            <i class="fa-solid fa-list-check"></i> View Direct Allocations
+        </a>
+    <?php endif; ?>
 
     <div class="form-card">
         <h2 class="page-title">Add New Allocation</h2>

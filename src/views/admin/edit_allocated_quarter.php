@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $allocatedDate = $_POST['allocatedDate'] ?? '';
     $other = $_POST['other'] ?? 'None';
 
-    $sql = "UPDATE allocated_quarters SET nic = ?, computer_no = ?, quarter_no = ?, quarter_name = ?, quarter_location = ?, quarter_type = ?, resident_name = ?, designation = ?, workplace = ?, allocated_date = ?, other = ? WHERE id = ?";
+    $sql = "UPDATE allocated_quarters SET nic = ?, computer_no = ?, quarter_no = ?, quarter_name = ?, quarter_location = ?, quarter_type = ?, resident_name = ?, designation = ?, workplace = ?, allocated_date = ?, other = ? WHERE id = ? AND source = 'normal'";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("sssssssssssi", $nic, $computerNo, $quarterNo, $quarterName, $quarterLocation, $quarterType, $residentName, $designation, $workplace, $allocatedDate, $other, $id);
 
@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Existing record fetch karne
-$stmt = $conn->prepare("SELECT * FROM allocated_quarters WHERE id = ?");
+$stmt = $conn->prepare("SELECT * FROM allocated_quarters WHERE id = ? AND source = 'normal'");
 $stmt->bind_param("i", $id);
 $stmt->execute();
 $result = $stmt->get_result();

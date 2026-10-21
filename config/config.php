@@ -114,4 +114,18 @@ function currentUrl() {
     return (isset($_SERVER['HTTPS']) ? 'https://' : 'http://') . 
            $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
 }
+
+/**
+ * Check whether the current session is completing a direct allocation.
+ */
+function isDirectAllocationSession() {
+    return !empty($_SESSION['direct_alloc']) && is_array($_SESSION['direct_alloc']);
+}
+
+/**
+ * Clear the direct-allocation session marker.
+ */
+function clearDirectAllocationSession() {
+    unset($_SESSION['direct_alloc']);
+}
 ?>

@@ -5,6 +5,10 @@ require_once __DIR__ . '/../../models/DropdownModel.php';
 $auth = new AuthController();
 $auth->requireLogin();
 
+$directAlloc = isDirectAllocationSession() && (int)($_SESSION['role_id'] ?? 0) === 7
+    ? $_SESSION['direct_alloc']
+    : null;
+$isDirect = $directAlloc !== null;
 $user = $_SESSION['user_name'] ?? 'User';
 $pageTitle = 'නිවාස අයදුම්පත්‍රය - සිංහල';
 
@@ -216,6 +220,7 @@ include __DIR__ . '/../layouts/header.php';
             <input type="hidden" name="residence_type" value="<?= htmlspecialchars($_GET['type'] ?? ($_SESSION['residence_type'] ?? 'single'), ENT_QUOTES, 'UTF-8'); ?>">
             <input type="hidden" name="form_language" value="si">
             <input type="hidden" name="resubmit_id" value="<?= (int)$resubmitId ?>">
+            <input type="hidden" name="direct_alloc" value="<?= $isDirect ? '1' : '0' ?>">
 
             <!-- ================= PAGE 1 ================= -->
             <div id="page-1" class="page-section">
@@ -237,6 +242,18 @@ include __DIR__ . '/../layouts/header.php';
                         <h1>ශ්‍රී ලංකා දුම්රිය දෙපාර්තමේන්තුව</h1>
                         <h2>දුම්රිය නිවාස අයදුම්පත්‍රය - ප්‍රවාහන උප දෙපාර්තමේන්තුව</h2>
                     </div>
+                    <?php if ($isDirect): ?>
+                    <div class="note-box" style="background:#e0f2fe; border-color:#7dd3fc; color:#075985;">
+                        <strong>සෘජු වෙන්කිරීමේ ආකාරය</strong> — පහත අයදුම්පත සම්පූර්ණ කරන්නේ
+                        <strong><?= htmlspecialchars($directAlloc['resident'] ?? '', ENT_QUOTES, 'UTF-8') ?></strong>
+                        (ජා.හැ.අ. <?= htmlspecialchars($directAlloc['nic'] ?? '', ENT_QUOTES, 'UTF-8') ?>) වෙනුවෙනි.
+                        නිවාස අංකය <strong><?= htmlspecialchars($directAlloc['quarter_no'] ?? '', ENT_QUOTES, 'UTF-8') ?></strong>,
+                        වර්ගය <?= htmlspecialchars($directAlloc['quarter_type'] ?? '', ENT_QUOTES, 'UTF-8') ?>,
+                        ස්ථානය <?= htmlspecialchars($directAlloc['quarter_loc'] ?? '', ENT_QUOTES, 'UTF-8') ?>.
+                        ඉදිරිපත් කළ විට සියලු අදියර අනුමත ලෙස සලකුණු වේ.
+                        <a href="<?= htmlspecialchars(baseUrl('admin/resume_direct_application.php?cancel=1'), ENT_QUOTES, 'UTF-8') ?>">සෘජු අයදුම්පත අවලංගු කරන්න</a>
+                    </div>
+                    <?php endif; ?>
                     <?php if ($resubmitApp): ?>
                     <div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:14px 18px;border-radius:8px;margin-bottom:20px;">
                         <strong><i class="fa-solid fa-triangle-exclamation"></i> ඔබගේ පෙර අයදුම්පත ප්‍රතික්ෂේප විය.</strong><br>
@@ -262,10 +279,16 @@ include __DIR__ . '/../layouts/header.php';
                         <div class="form-group">
                             <label>ස්ථානය :</label>
                             <select id="location-dropdown" name="applied_quarter_location" class="dropdown-select" onkeydown="handleEnter(event, 'house-number-dropdown')">
-                                <option value="" disabled <?= $resubmitApp ? '' : 'selected' ?>>-- Select --</option>
+                                <option value="" disabled <?= ($resubmitApp || $isDirect) ? '' : 'selected' ?>>-- Select --</option>
                                 <?php foreach ($quarterLocations as $opt): ?>
-                                    <option value="<?= htmlspecialchars($opt['name'], ENT_QUOTES, 'UTF-8'); ?>"
-                                        <?= ($resubmitApp && ($resubmitApp['applied_quarter_location'] ?? '') === $opt['name']) ? 'selected' : '' ?>>
+                                    <?php
+                                    $locationValue = $isDirect ? ($opt['value'] ?? $opt['name']) : $opt['name'];
+                                    $locationSelected = $isDirect
+                                        ? (($directAlloc['quarter_loc'] ?? '') === ($opt['value'] ?? $opt['name']))
+                                        : ($resubmitApp && ($resubmitApp['applied_quarter_location'] ?? '') === $opt['name']);
+                                    ?>
+                                    <option value="<?= htmlspecialchars($locationValue, ENT_QUOTES, 'UTF-8'); ?>"
+                                        <?= $locationSelected ? 'selected' : '' ?>>
                                         <?= htmlspecialchars($opt['name'], ENT_QUOTES, 'UTF-8'); ?>
                                     </option>
                                 <?php endforeach; ?>
@@ -274,9 +297,12 @@ include __DIR__ . '/../layouts/header.php';
                         <div class="form-group">
                             <label>අයදුම් කරන නිවාස අංකය :</label>
                             <select id="house-number-dropdown" name="applied_quarter_number" class="dropdown-select" onkeydown="handleEnter(event, 'house-type')">
-                                <option value="" disabled selected>-- නිවාස අංකය තෝරන්න --</option>
+                                <option value="" disabled <?= $isDirect ? '' : 'selected' ?>>-- නිවාස අංකය තෝරන්න --</option>
                                 <?php foreach ($quarterNumbers as $qn): ?>
-                                    <option value="<?= htmlspecialchars($qn['name'], ENT_QUOTES, 'UTF-8'); ?>"><?= htmlspecialchars($qn['name'], ENT_QUOTES, 'UTF-8'); ?></option>
+                                    <option value="<?= htmlspecialchars($qn['name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                        <?= $isDirect && ($directAlloc['quarter_no'] ?? '') === $qn['name'] ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($qn['name'], ENT_QUOTES, 'UTF-8'); ?>
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -286,9 +312,18 @@ include __DIR__ . '/../layouts/header.php';
                         <div class="form-group">
                             <label for="house-type">අයදුම් කරන නිවාස වර්ගය :</label>
                             <select id="house-type" name="quarter_type" class="dropdown-select" onkeydown="handleEnter(event, 'full_name')">
-                                <option value="" disabled selected>-- තෝරන්න --</option>
+                                <option value="" disabled <?= ($resubmitApp || $isDirect) ? '' : 'selected' ?>>-- තෝරන්න --</option>
                                 <?php foreach ($quarterTypes as $quarterType): ?>
-                                    <option value="<?= htmlspecialchars($quarterType['name'], ENT_QUOTES, 'UTF-8'); ?>"><?= htmlspecialchars($quarterType['name'], ENT_QUOTES, 'UTF-8'); ?></option>
+                                    <?php
+                                    $quarterTypeValue = $isDirect ? ($quarterType['value'] ?? $quarterType['name']) : $quarterType['name'];
+                                    $quarterTypeSelected = $isDirect
+                                        ? (($directAlloc['quarter_type'] ?? '') === ($quarterType['value'] ?? $quarterType['name']))
+                                        : ($resubmitApp && ($resubmitApp['quarter_type'] ?? '') === $quarterType['name']);
+                                    ?>
+                                    <option value="<?= htmlspecialchars($quarterTypeValue, ENT_QUOTES, 'UTF-8'); ?>"
+                                        <?= $quarterTypeSelected ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($quarterType['name'], ENT_QUOTES, 'UTF-8'); ?>
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -298,7 +333,7 @@ include __DIR__ . '/../layouts/header.php';
                     
                     <div class="form-group">
                         <label>I. අයදුම්කරුගේ සම්පූර්ණ නම :</label>
-                        <input type="text" name="name" id="full_name" class="table-input auto-fill" value="<?php echo htmlspecialchars($_SESSION['full_name'] ?? $_SESSION['user_name'] ?? ''); ?>" style="padding: 10px; font-size: 14px; width: 100%;" onkeydown="handleEnter(event, 'initials')">
+                        <input type="text" name="name" id="full_name" class="table-input auto-fill" value="<?= htmlspecialchars($isDirect ? ($directAlloc['resident'] ?? '') : ($_SESSION['full_name'] ?? $_SESSION['user_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" style="padding: 10px; font-size: 14px; width: 100%;" onkeydown="handleEnter(event, 'initials')">
                     </div>
                     
                     <div class="form-group">
@@ -309,8 +344,18 @@ include __DIR__ . '/../layouts/header.php';
                     <div class="form-group">
                         <label>III. වර්තමාන සේවා ස්ථානය :</label>
                         <select name="applicant_current_work_station" id="current_post" class="dropdown-select" onkeydown="handleEnter(event, 'service_no')">
-                            <option value="" disabled selected>-- තෝරන්න --</option>
-                            <?php foreach ($workStations as $opt): ?><option value="<?= htmlspecialchars($opt['name'], ENT_QUOTES, 'UTF-8'); ?>"><?= htmlspecialchars($opt['name'], ENT_QUOTES, 'UTF-8'); ?></option><?php endforeach; ?>
+                            <option value="" disabled <?= $isDirect ? '' : 'selected' ?>>-- තෝරන්න --</option>
+                            <?php foreach ($workStations as $opt): ?>
+                                <?php
+                                $workplaceValue = $isDirect && ($directAlloc['workplace'] ?? '') === ($opt['value'] ?? $opt['name'])
+                                    ? ($opt['value'] ?? $opt['name'])
+                                    : $opt['name'];
+                                ?>
+                                <option value="<?= htmlspecialchars($workplaceValue, ENT_QUOTES, 'UTF-8'); ?>"
+                                    <?= $isDirect && ($directAlloc['workplace'] ?? '') === ($opt['value'] ?? $opt['name']) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($opt['name'], ENT_QUOTES, 'UTF-8'); ?>
+                                </option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
 
@@ -321,7 +366,7 @@ include __DIR__ . '/../layouts/header.php';
                         </div>
                         <div class="form-group">
                             <label>V. පරිගණක අංකය :</label>
-                            <input type="text" name="computer_number" id="computer_no" class="table-input auto-fill" value="<?php echo htmlspecialchars($_SESSION['computer_no'] ?? ''); ?>" style="padding: 10px; font-size: 14px; width: 100%;" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')" onkeydown="handleEnter(event, 'salary_slip_no')">
+                            <input type="text" name="computer_number" id="computer_no" class="table-input auto-fill" value="<?= htmlspecialchars($isDirect ? ($directAlloc['computer_no'] ?? '') : ($_SESSION['computer_no'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" style="padding: 10px; font-size: 14px; width: 100%;" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')" onkeydown="handleEnter(event, 'salary_slip_no')">
                         </div>
                         <div class="form-group">
                             <label>වැටුපත් අංකය :</label>
@@ -336,7 +381,7 @@ include __DIR__ . '/../layouts/header.php';
                         </div>
                         <div class="form-group">
                             <label>VIII. දුරකථන අංකය :</label>
-                             <input type="tel" name="mobile" id="phone_no" class="table-input auto-fill" value="<?php echo htmlspecialchars($_SESSION['phone_no'] ?? $_SESSION['user_phone'] ?? ''); ?>" style="padding: 10px; font-size: 14px; width: 100%;" onkeydown="handleEnter(event, 'permanent_address')">
+                             <input type="tel" name="mobile" id="phone_no" class="table-input auto-fill" value="<?= htmlspecialchars($isDirect ? ($directAlloc['phone_no'] ?? '') : ($_SESSION['phone_no'] ?? $_SESSION['user_phone'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" style="padding: 10px; font-size: 14px; width: 100%;" onkeydown="handleEnter(event, 'permanent_address')">
                         </div>
                     </div>
 
@@ -349,15 +394,23 @@ include __DIR__ . '/../layouts/header.php';
                         <div class="form-group">
                             <label>IX. තනතුර :</label>
                             <select id="designation" name="applicant_designation" class="dropdown-select" onkeydown="handleEnter(event, 'national_id')">
-                                <option value="" disabled selected>-- තෝරන්න --</option>
+                                <option value="" disabled <?= $isDirect ? '' : 'selected' ?>>-- තෝරන්න --</option>
                                 <?php foreach ($designations as $designationOption): ?>
-                                    <option value="<?= htmlspecialchars($designationOption['name'], ENT_QUOTES, 'UTF-8'); ?>"><?= htmlspecialchars($designationOption['name'], ENT_QUOTES, 'UTF-8'); ?></option>
+                                    <?php
+                                    $designationValue = $isDirect && ($directAlloc['designation'] ?? '') === ($designationOption['value'] ?? $designationOption['name'])
+                                        ? ($designationOption['value'] ?? $designationOption['name'])
+                                        : $designationOption['name'];
+                                    ?>
+                                    <option value="<?= htmlspecialchars($designationValue, ENT_QUOTES, 'UTF-8'); ?>"
+                                        <?= $isDirect && ($directAlloc['designation'] ?? '') === ($designationOption['value'] ?? $designationOption['name']) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($designationOption['name'], ENT_QUOTES, 'UTF-8'); ?>
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="form-group">
                             <label>XI. ජාතික හැඳුනුම්පත් අංකය :</label>
-                            <input type="text" name="nic" id="national_id" class="table-input auto-fill" value="<?php echo htmlspecialchars($_SESSION['national_id'] ?? $_SESSION['nic'] ?? ''); ?>" style="padding: 10px; font-size: 14px; width: 100%;" onkeydown="handleEnter(event, 'residential_address')">
+                            <input type="text" name="nic" id="national_id" class="table-input auto-fill" value="<?= htmlspecialchars($isDirect ? ($directAlloc['nic'] ?? '') : ($_SESSION['national_id'] ?? $_SESSION['nic'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" style="padding: 10px; font-size: 14px; width: 100%;" onkeydown="handleEnter(event, 'residential_address')">
                         </div>
                     </div>
 
@@ -996,12 +1049,12 @@ include __DIR__ . '/../layouts/header.php';
         });
 
         window.onload = function() {
-            const userData = {
-                full_name: "<?php echo htmlspecialchars($_SESSION['full_name'] ?? $_SESSION['user_name'] ?? '', ENT_QUOTES); ?>",
-                computer_no: "<?php echo htmlspecialchars($_SESSION['computer_no'] ?? '', ENT_QUOTES); ?>",
-                national_id: "<?php echo htmlspecialchars($_SESSION['national_id'] ?? $_SESSION['nic'] ?? '', ENT_QUOTES); ?>",
-                phone_no: "<?php echo htmlspecialchars($_SESSION['phone_no'] ?? $_SESSION['user_phone'] ?? '', ENT_QUOTES); ?>"
-            };
+            const userData = <?= json_encode([
+                'full_name' => $isDirect ? ($directAlloc['resident'] ?? '') : ($_SESSION['full_name'] ?? $_SESSION['user_name'] ?? ''),
+                'computer_no' => $isDirect ? ($directAlloc['computer_no'] ?? '') : ($_SESSION['computer_no'] ?? ''),
+                'national_id' => $isDirect ? ($directAlloc['nic'] ?? '') : ($_SESSION['national_id'] ?? $_SESSION['nic'] ?? ''),
+                'phone_no' => $isDirect ? ($directAlloc['phone_no'] ?? '') : ($_SESSION['phone_no'] ?? $_SESSION['user_phone'] ?? ''),
+            ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
             
             if (userData.full_name) document.getElementById('full_name').value = userData.full_name;
             if (userData.computer_no) document.getElementById('computer_no').value = userData.computer_no;

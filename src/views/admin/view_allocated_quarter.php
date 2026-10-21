@@ -17,7 +17,7 @@ $item = null;
 $recordId = isset($_GET['id']) ? intval($_GET['id']) : 0;
 
 if ($recordId > 0) {
-    $stmt = $conn->prepare("SELECT * FROM allocated_quarters WHERE id = ?");
+    $stmt = $conn->prepare("SELECT * FROM allocated_quarters WHERE id = ? AND source = 'normal'");
     $stmt->bind_param("i", $recordId);
     $stmt->execute();
     $result = $stmt->get_result();

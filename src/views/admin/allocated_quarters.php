@@ -19,7 +19,7 @@ $quarters = [];
 // Handle Delete Request with System Message Generation
 if (isset($_GET['delete_id'])) {
     $deleteId = intval($_GET['delete_id']);
-    $stmt = $conn->prepare("DELETE FROM allocated_quarters WHERE id = ?");
+    $stmt = $conn->prepare("DELETE FROM allocated_quarters WHERE id = ? AND source = 'normal'");
     $stmt->bind_param("i", $deleteId);
     if ($stmt->execute()) {
         $stmt->close();
@@ -37,7 +37,7 @@ if (isset($_GET['delete_id'])) {
 // Handle Search Filter & Order by ASC so new records appear at the bottom
 $search = trim($_GET['search'] ?? '');
 if ($search !== '') {
-    $sql = "SELECT * FROM allocated_quarters WHERE nic LIKE ? OR computer_no LIKE ? OR quarter_no LIKE ? OR quarter_name LIKE ? OR quarter_location LIKE ? OR resident_name LIKE ? OR designation LIKE ? OR workplace LIKE ? ORDER BY id ASC";
+    $sql = "SELECT * FROM allocated_quarters WHERE source = 'normal' AND (nic LIKE ? OR computer_no LIKE ? OR quarter_no LIKE ? OR quarter_name LIKE ? OR quarter_location LIKE ? OR resident_name LIKE ? OR designation LIKE ? OR workplace LIKE ?) ORDER BY id ASC";
     $stmt = $conn->prepare($sql);
     $searchTerm = "%" . $search . "%";
     $stmt->bind_param("ssssssss", $searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm);
@@ -48,7 +48,7 @@ if ($search !== '') {
     }
     $stmt->close();
 } else {
-    $result = $conn->query("SELECT * FROM allocated_quarters ORDER BY id ASC");
+    $result = $conn->query("SELECT * FROM allocated_quarters WHERE source = 'normal' ORDER BY id ASC");
     if ($result) {
         $quarters = $result->fetch_all(MYSQLI_ASSOC);
     }
@@ -418,7 +418,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 <?php endif; ?>
 
 <main class="approval-container">
-    <a href="dashboard.php" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
+    <a href="FA_dashboard.php" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
 
     <div class="approval-header">
         <h2>Allocated Quarters List</h2>

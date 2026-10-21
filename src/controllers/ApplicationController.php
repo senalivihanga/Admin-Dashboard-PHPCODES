@@ -91,7 +91,18 @@ class ApplicationController {
      */
     public function submitFullApplication() {
         $this->auth->requireLogin();
-        $nic = $_SESSION['nic'];
+        $directAlloc = isDirectAllocationSession() ? $_SESSION['direct_alloc'] : null;
+        $isDirectAlloc = $directAlloc !== null
+            && (int)($_SESSION['role_id'] ?? 0) === 7
+            && ($_POST['direct_alloc'] ?? '0') === '1'
+            && !empty($directAlloc['allocation_id'])
+            && !empty($directAlloc['nic']);
+        if (($_POST['direct_alloc'] ?? '0') === '1' && !$isDirectAlloc) {
+            $_SESSION['form_error'] = 'This direct-allocation application is no longer active. Please reopen it from the FA audit list.';
+            redirect('/application/form/en');
+            return;
+        }
+        $nic = $isDirectAlloc ? trim($directAlloc['nic']) : $_SESSION['nic'];
         $formLanguage = $_POST['form_language'] ?? 'en';
         $formPath = $formLanguage === 'si' ? '/application/form/si' : '/application/form/en';
 
@@ -166,6 +177,15 @@ class ApplicationController {
                 $_POST[$field] = $_POST[$alias];
             }
         }
+        if ($isDirectAlloc) {
+            $_POST['national_id'] = $nic;
+            $_POST['house_type'] = $directAlloc['quarter_type'];
+            $_POST['quarter_type'] = $directAlloc['quarter_type'];
+            $_POST['house_no'] = $directAlloc['quarter_no'];
+            $_POST['applied_quarter_number'] = $directAlloc['quarter_no'];
+            $_POST['location'] = $directAlloc['quarter_loc'];
+            $_POST['applied_quarter_location'] = $directAlloc['quarter_loc'];
+        }
         array_walk_recursive($_POST, static function (&$value) {
             if ($value === '') {
                 $value = null;
@@ -196,7 +216,7 @@ class ApplicationController {
         }
 
         // The NIC typed on the form must match the logged-in applicant's NIC.
-        if (trim($_POST['national_id']) !== trim($nic)) {
+        if (trim((string)($_POST['national_id'] ?? '')) !== trim($nic)) {
             $_SESSION['form_error'] = "The NIC entered does not match your account. Please correct it.";
             redirect($formPath);
             return;
@@ -324,7 +344,7 @@ class ApplicationController {
             $isResubmit = 0;
             $draftRow = null;
 
-            if ($resubmitId) {
+            if (!$isDirectAlloc && $resubmitId) {
                 $rejStmt = $conn->prepare(
                     "SELECT id, application_no FROM applications
                      WHERE id = ? AND nic = ? AND application_status = 'rejected'
@@ -340,7 +360,7 @@ class ApplicationController {
             }
 
             // Priority 2: otherwise use the latest draft
-            if (!$draftRow) {
+            if (!$draftRow && !$isDirectAlloc) {
                 $draftStmt = $conn->prepare(
                     "SELECT id, application_no FROM applications
                      WHERE nic = ? AND application_status = 'draft'
@@ -392,6 +412,7 @@ class ApplicationController {
 
                 $appSQL = "
                     UPDATE applications SET
+                        source = 'normal',
                         computer_no = ?, quarter_type = ?, application_date = CURDATE(),
                         applied_quarter_number = ?, applied_quarter_location = ?,
                         has_applicant_served_other_sub_dept = ?, has_applicant_service_breaks = ?,
@@ -512,6 +533,55 @@ class ApplicationController {
                 $stmt->execute();
                 $applicationId = $stmt->insert_id;
                 $stmt->close();
+
+                if ($isDirectAlloc) {
+                    $forceApprove = $conn->prepare(
+                        "UPDATE applications SET
+                            source = 'direct',
+                            boss_status = 'approved',
+                            file_status = 'approved',
+                            clerk_status = 'approved',
+                            branch_status = 'approved',
+                            final_status = 'approved',
+                            application_status = 'approved',
+                            status = 'approved',
+                            submit_status = 'success'
+                         WHERE id = ? AND nic = ?"
+                    );
+                    $forceApprove->bind_param('is', $applicationId, $nic);
+                    $forceApprove->execute();
+                    $forceApprove->close();
+
+                    $allocationStmt = $conn->prepare(
+                        "UPDATE allocated_quarters
+                            SET computer_no = ?, resident_name = ?, designation = ?, workplace = ?
+                          WHERE id = ? AND nic = ? AND source = 'direct'"
+                    );
+                    $allocationWorkplace = (string)($current_post ?? '');
+                    $allocationStmt->bind_param(
+                        'ssssis',
+                        $computer_no_val,
+                        $full_name,
+                        $designation,
+                        $allocationWorkplace,
+                        $directAlloc['allocation_id'],
+                        $nic
+                    );
+                    $allocationStmt->execute();
+                    if ($allocationStmt->affected_rows === 0) {
+                        $allocationCheck = $conn->prepare(
+                            "SELECT id FROM allocated_quarters WHERE id = ? AND nic = ? AND source = 'direct' LIMIT 1"
+                        );
+                        $allocationCheck->bind_param('is', $directAlloc['allocation_id'], $nic);
+                        $allocationCheck->execute();
+                        $allocationExists = $allocationCheck->get_result()->fetch_assoc();
+                        $allocationCheck->close();
+                        if (!$allocationExists) {
+                            throw new RuntimeException('The direct allocation record could not be found.');
+                        }
+                    }
+                    $allocationStmt->close();
+                }
             }
 
             $receivedDate = $_POST['office_received_date'] ?? null;
@@ -725,7 +795,9 @@ class ApplicationController {
             $stmt->close();
 
             $notificationTitle = 'Application Received';
-            $notificationMessage = 'Your quarter application has been received and is under review.';
+            $notificationMessage = $isDirectAlloc
+                ? 'Your quarter application has been received and approved.'
+                : 'Your quarter application has been received and is under review.';
             $notificationStmt = $conn->prepare("INSERT INTO notifications (nic, title, message, is_read) VALUES (?, ?, ?, 0)");
             $notificationStmt->bind_param("sss", $nic, $notificationTitle, $notificationMessage);
             $notificationStmt->execute();
@@ -733,6 +805,9 @@ class ApplicationController {
 
             // Commit transaction
             $conn->commit();
+            if ($isDirectAlloc) {
+                clearDirectAllocationSession();
+            }
             $_SESSION['success_message'] = "Application submitted successfully!";
             $appNo = $applicationNo;
             $successLang = $formLanguage;
