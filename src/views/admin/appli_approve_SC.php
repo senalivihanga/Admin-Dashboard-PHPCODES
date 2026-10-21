@@ -1,6 +1,18 @@
 <?php
 /**
  * Application Approval List - Subject Clerk - Sri Lanka Railways
+ * ---------------------------------------------------------------
+ * The Subject Clerk's "Application Approval" page shows ONLY applications
+ * that have reached the clerk's desk and are still awaiting the clerk's
+ * decision, i.e.:
+ *   - boss_status        = 'approved'        (Immediate Boss approved)
+ *   - file_status        = 'approved'        (Personal File approved)
+ *   - clerk_status       = 'pending'         (clerk has NOT decided yet)
+ *   - application_status = 'pending_clerk'   (flow position = clerk queue)
+ *
+ * Once the clerk approves or rejects, the row is removed from this queue:
+ *   - approve → pending_super + clerk_status='approved'  (→ Deputy Superintendent)
+ *   - reject  → returned_to_file + clerk_status='rejected' (→ back to Personal File)
  */
 require_once __DIR__ . '/../../../config/config.php';
 
@@ -11,8 +23,8 @@ if (session_status() === PHP_SESSION_NONE) {
 $pageTitle = "Application Approval List - Sri Lanka Railways";
 
 $userData = [
-    'name' => 'Subject Clerk',
-    'role' => 'Sri Lanka Railways - AOT',
+    'name'     => $_SESSION['user_name'] ?? 'Subject Clerk',
+    'role'     => 'Sri Lanka Railways - AOT',
     'initials' => 'SC'
 ];
 
@@ -20,20 +32,22 @@ $user = [
     'name' => $userData['name']
 ];
 
-$alert_msg = '';
+$alert_msg  = '';
 $alert_type = '';
-$conn = getDBConnection();
+$conn       = getDBConnection();
 
-// Subject Clerk decision, saved in applications.clerk_status / clerk_reason
+// -------------------------------------------------------------
+// Handle clerk decision (approve / reject)
+// -------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-    $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
+    $id     = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
     $reason = trim((string)($_POST['rejectionReason'] ?? ''));
 
     if ($id && ($action === 'approve' || ($action === 'reject' && $reason !== ''))) {
-        $clerkStatus = $action === 'approve' ? 'approved' : 'rejected';
-        $clerkReason = $action === 'reject' ? $reason : null;
-        // Approve -> continues to the next stage (pending_super). Reject -> goes BACK TO PERSONAL FILE (previous stage).
+        $clerkStatus       = $action === 'approve' ? 'approved' : 'rejected';
+        $clerkReason       = $action === 'reject'  ? $reason    : null;
+        // Approve → next stage (Deputy Superintendent). Reject → back to Personal File.
         $applicationStatus = $action === 'approve' ? 'pending_super' : 'returned_to_file';
 
         $stmt = $conn->prepare(
@@ -49,39 +63,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute();
 
         if ($stmt->affected_rows === 1) {
-            $alert_msg = $action === 'approve'
+            $alert_msg  = $action === 'approve'
                 ? 'Application approved successfully and moved to Approved List.'
                 : 'Application rejected and returned to Personal File.';
             $alert_type = $action === 'approve' ? 'success' : 'error';
+
+            // Notify the applicant on rejection
+            if ($action === 'reject') {
+                $notif = $conn->prepare(
+                    "INSERT INTO notifications (nic, title, message, is_read)
+                     SELECT nic, 'Application Rejected',
+                            CONCAT('Your application was rejected by the Subject Clerk. Reason: ', ?),
+                            0
+                     FROM applications WHERE id = ?"
+                );
+                $notif->bind_param('si', $reason, $id);
+                $notif->execute();
+                $notif->close();
+            }
         } else {
-            $alert_msg = 'This application is no longer awaiting your decision.';
+            $alert_msg  = 'This application is no longer awaiting your decision.';
             $alert_type = 'error';
         }
         $stmt->close();
     } elseif ($action === 'reject') {
-        $alert_msg = 'A rejection reason is required.';
+        $alert_msg  = 'A rejection reason is required.';
         $alert_type = 'error';
     }
 }
 
-// Queue = applications approved by Personal File that the clerk has not decided yet
+// -------------------------------------------------------------
+// Fetch the clerk's pending queue
+// -------------------------------------------------------------
 $searchQuery = trim($_GET['search'] ?? '');
-$sql = "SELECT a.id, a.application_no AS appNo, a.nic, a.computer_no AS compNo,
-               u.name, COALESCE(u.applicant_designation, '') AS desig
-        FROM applications AS a
-        INNER JOIN users AS u ON u.nic = a.nic
-        WHERE a.boss_status = 'approved'
-          AND a.file_status = 'approved'
-          AND a.clerk_status = 'pending'
-          AND a.application_status = 'pending_clerk'";
+
+$sql = "SELECT a.id,
+               a.application_no   AS appNo,
+               a.nic,
+               a.computer_no      AS compNo,
+               u.name,
+               COALESCE(u.applicant_designation, '') AS desig
+          FROM applications AS a
+    INNER JOIN users        AS u ON u.nic = a.nic
+         WHERE a.boss_status        = 'approved'
+           AND a.file_status        = 'approved'
+           AND a.clerk_status       = 'pending'
+           AND a.application_status = 'pending_clerk'";
+
 if ($searchQuery !== '') {
-    $sql .= " AND (a.application_no LIKE ? OR a.nic LIKE ? OR a.computer_no LIKE ? OR u.name LIKE ?)";
-    $searchTerm = '%' . $searchQuery . '%';
+    $sql .= " AND (a.application_no LIKE ?
+                OR a.nic LIKE ?
+                OR a.computer_no LIKE ?
+                OR u.name LIKE ?)";
     $stmt = $conn->prepare($sql . ' ORDER BY a.application_date ASC, a.id ASC');
+    $searchTerm = '%' . $searchQuery . '%';
     $stmt->bind_param('ssss', $searchTerm, $searchTerm, $searchTerm, $searchTerm);
 } else {
     $stmt = $conn->prepare($sql . ' ORDER BY a.application_date ASC, a.id ASC');
 }
+
 $stmt->execute();
 $displayData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();

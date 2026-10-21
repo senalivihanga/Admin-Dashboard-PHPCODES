@@ -382,9 +382,9 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                 <div class="stat-count"><?php echo str_pad($dashboardStats['pending_list'], 2, '0', STR_PAD_LEFT); ?></div>
             </a>
 
-            <a href="approve_list_SC.php" class="stat-card">
+            <a href="approve_reject_list_SC.php" class="stat-card">
                 <i class="fa-solid fa-circle-check" style="color: #10b981;"></i>
-                <h3>Approved List</h3>
+                <h3>Approved/rejected List</h3>
                 <div class="stat-count"><?php echo str_pad($dashboardStats['approved_list'], 2, '0', STR_PAD_LEFT); ?></div>
             </a>
         </div>
@@ -401,9 +401,9 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                 <span class="tile-link-text">Open Approval Queue <i class="fa-solid fa-arrow-right"></i></span>
             </a>
 
-            <a href="approve_list_SC.php" class="manage-tile">
+            <a href="approve_reject_list_SC.php" class="manage-tile">
                 <div class="manage-tile-header">
-                    <h4>Approved List</h4>
+                    <h4>Approved/Rejected List</h4>
                     <i class="fa-solid fa-circle-check" style="color: #10b981;"></i>
                 </div>
                 <p>View the comprehensive log and records of all successfully approved applications.</p>

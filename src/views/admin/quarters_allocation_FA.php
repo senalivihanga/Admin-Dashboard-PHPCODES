@@ -1,6 +1,10 @@
 <?php
 /**
- * Allocated Quarters List - Sri Lanka Railways Admin
+ * Allocated Quarters List - Final Approver - Sri Lanka Railways
+ * -------------------------------------------------------------
+ * Reads real allocation records from `allocated_quarters`, joined
+ * with `quarters` (for quarter details) and `users` (for the resident's
+ * full name and designation, in case the stored copy is blank).
  */
 require_once __DIR__ . '/../../../config/config.php';
 
@@ -11,51 +15,56 @@ if (session_status() === PHP_SESSION_NONE) {
 $pageTitle = "Allocated Quarters List - Sri Lanka Railways Admin";
 
 $userData = [
-    'name' => 'Final Approver',
-    'role' => 'Sri Lanka Railways - AOT',
+    'name'     => $_SESSION['user_name'] ?? 'Final Approver',
+    'role'     => 'Sri Lanka Railways - AOT',
     'initials' => 'FA'
 ];
 
-$allocatedData = [
-    [
-        'nic' => '199812345678',
-        'computerNo' => '101',
-        'quarterNo' => 'Q-01',
-        'quarterName' => 'Sunflower Manor',
-        'quarterLocation' => 'Colombo 10',
-        'quarterType' => 'Grade II',
-        'residentName' => 'A. B. Perera',
-        'designation' => 'Clerk',
-        'workplace' => 'Colombo Fort',
-        'allocatedDate' => '2026-01-10',
-        'other' => 'None'
-    ],
-    [
-        'nic' => '199912345678',
-        'computerNo' => '102',
-        'quarterNo' => 'Q-04',
-        'quarterName' => 'Railway View',
-        'quarterLocation' => 'Maradana',
-        'quarterType' => 'Grade III',
-        'residentName' => 'N. K. Silva',
-        'designation' => 'Station Master',
-        'workplace' => 'Maradana',
-        'allocatedDate' => '2026-02-15',
-        'other' => 'Sample record'
-    ]
-];
-
-// Handle Search Filter matching SC style
 $searchQuery = trim($_GET['search'] ?? '');
 
-if (!empty($searchQuery)) {
-    $allocatedData = array_filter($allocatedData, function($item) use ($searchQuery) {
-        return stripos($item['nic'],$searchQuery) !== false ||
-               stripos($item['computerNo'],$searchQuery) !== false ||
-               stripos($item['quarterNo'],$searchQuery) !== false ||
-               stripos($item['residentName'],$searchQuery) !== false;
-    });
+$conn = getDBConnection();
+
+// -------------------------------------------------------------
+// Fetch real allocations (LEFT JOIN so we still show rows if the
+// quarter or user has been removed for some reason)
+// -------------------------------------------------------------
+$sql = "SELECT
+            aq.id,
+            aq.nic,
+            aq.computer_no,
+            aq.quarter_no,
+            aq.quarter_name,
+            aq.quarter_location,
+            aq.quarter_type,
+            COALESCE(NULLIF(aq.resident_name, ''), u.name, '-')              AS resident_name,
+            COALESCE(NULLIF(aq.designation, ''),  u.applicant_designation, '-') AS designation,
+            COALESCE(NULLIF(aq.workplace, ''),    u.applicant_current_work_station, '-') AS workplace,
+            aq.allocated_date,
+            COALESCE(NULLIF(aq.other, ''), 'None')                            AS other
+        FROM allocated_quarters AS aq
+   LEFT JOIN users    AS u ON u.nic = aq.nic
+   LEFT JOIN quarters AS q ON q.quarter_number = aq.quarter_no
+                         AND q.location_name  = aq.quarter_location";
+
+if ($searchQuery !== '') {
+    $sql .= " WHERE (aq.nic LIKE ?
+                 OR aq.computer_no LIKE ?
+                 OR aq.quarter_no LIKE ?
+                 OR aq.quarter_name LIKE ?
+                 OR aq.quarter_location LIKE ?
+                 OR aq.resident_name LIKE ?
+                 OR u.name LIKE ?)";
+    $stmt = $conn->prepare($sql . ' ORDER BY aq.id DESC');
+    $term = '%' . $searchQuery . '%';
+    $stmt->bind_param('sssssss', $term, $term, $term, $term, $term, $term, $term);
+} else {
+    $stmt = $conn->prepare($sql . ' ORDER BY aq.id DESC');
 }
+
+$stmt->execute();
+$allocatedData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
 
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
@@ -237,7 +246,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         color: var(--text-main);
     }
 
-    .search-btn { 
+    .search-btn, .print-btn { 
         border: none; 
         padding: 10px 18px; 
         border-radius: 8px; 
@@ -249,11 +258,21 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         font-size: 0.9rem;
         text-decoration: none; 
         transition: background 0.2s; 
+        color: white;
+    }
+    
+    .search-btn { 
         background-color: var(--primary-color); 
-        color: white; 
     }
     .search-btn:hover { 
         background-color: var(--primary-dark); 
+    }
+
+    .print-btn { 
+        background-color: #0284c7; 
+    }
+    .print-btn:hover { 
+        background-color: #0369a1; 
     }
 
     .table-card { 
@@ -291,6 +310,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
     .allocated-table td { 
         color: #334155; 
+        word-break: break-word;
     }
 
     .custom-modal {
@@ -365,11 +385,33 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         .search-wrapper {
             max-width: 100%;
         }
+        .search-btn, .print-btn {
+            width: 100%;
+            justify-content: center;
+        }
+    }
+
+    @media print {
+        @page { size: landscape; margin: 10mm; }
+        body, html { background-color: #ffffff !important; }
+        .back-link, .search-card, .user-profile-wrapper, .print-btn {
+            display: none !important;
+        }
+        .table-card {
+            box-shadow: none !important; border: none !important; padding: 0 !important;
+        }
+        .allocated-table {
+            width: 100% !important; min-width: 0 !important; font-size: 8.5pt;
+        }
+        .allocated-table th, .allocated-table td {
+            padding: 6px 4px !important;
+            border: 1px solid #333 !important;
+        }
     }
 </style>
 
 <div class="container">
-    <?php if (isset($_SESSION['admin_name']) || (isset($_SESSION['role']) &&$_SESSION['role'] === 'admin')): ?>
+    <?php if (isset($_SESSION['admin_name']) || (isset($_SESSION['role']) && $_SESSION['role'] === 'admin')): ?>
         <a href="FA_dashboard.php" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
     <?php else: ?>
         <div class="user-profile-wrapper">
@@ -393,17 +435,26 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
     <h2 class="page-title">Allocated Quarters List</h2>
 
-    <!-- PHP GET Search Form matching SC style -->
+    <!-- PHP GET Search Form -->
     <form method="GET" action="" class="search-card">
         <div class="search-wrapper">
             <div class="search-input-container">
-                <input type="text" name="search" class="search-input" placeholder="Search by NIC, Computer No. or Quarter No..." value="<?php echo htmlspecialchars($searchQuery); ?>">
+                <input type="text" name="search" class="search-input"
+                       placeholder="Search by NIC, Computer No. or Quarter No..."
+                       value="<?php echo htmlspecialchars($searchQuery); ?>">
                 <?php if (!empty($searchQuery)): ?>
-                    <a href="?" class="search-clear-icon" title="Clear Search"><i class="fa-solid fa-xmark"></i></a>
+                    <a href="?" class="search-clear-icon" title="Clear Search">
+                        <i class="fa-solid fa-xmark"></i>
+                    </a>
                 <?php endif; ?>
             </div>
-            <button type="submit" class="search-btn"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
+            <button type="submit" class="search-btn">
+                <i class="fa-solid fa-magnifying-glass"></i> Search
+            </button>
         </div>
+        <button type="button" class="print-btn" onclick="window.print()">
+            <i class="fa-solid fa-print"></i> Print / Save as PDF
+        </button>
     </form>
 
     <div class="table-card">
@@ -424,8 +475,33 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                     <th>Other</th>
                 </tr>
             </thead>
-            <tbody id="allocatedBody">
-                <!-- PHP initial render & JS merge -->
+            <tbody>
+                <?php if (empty($allocatedData)): ?>
+                    <tr>
+                        <td colspan="12" style="text-align: center; color: #64748b; padding: 25px;">
+                            <?php echo $searchQuery !== ''
+                                ? 'No allocations match your search.'
+                                : 'No allocated quarters records found.'; ?>
+                        </td>
+                    </tr>
+                <?php else: ?>
+                    <?php $i = 1; foreach ($allocatedData as $row): ?>
+                        <tr>
+                            <td><?php echo $i++; ?></td>
+                            <td><?php echo htmlspecialchars($row['nic']); ?></td>
+                            <td><?php echo htmlspecialchars($row['computer_no']); ?></td>
+                            <td><strong><?php echo htmlspecialchars($row['quarter_no']); ?></strong></td>
+                            <td><?php echo htmlspecialchars($row['quarter_name'] ?? '-'); ?></td>
+                            <td><?php echo htmlspecialchars($row['quarter_location']); ?></td>
+                            <td><?php echo htmlspecialchars($row['quarter_type']); ?></td>
+                            <td><?php echo htmlspecialchars($row['resident_name']); ?></td>
+                            <td><?php echo htmlspecialchars($row['designation']); ?></td>
+                            <td><?php echo htmlspecialchars($row['workplace']); ?></td>
+                            <td><?php echo htmlspecialchars($row['allocated_date']); ?></td>
+                            <td><?php echo htmlspecialchars($row['other']); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </tbody>
         </table>
     </div>
@@ -444,13 +520,9 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 </div>
 
 <script>
-    const serverAllocatedData = <?php echo json_encode($allocatedData); ?>;
-
     function toggleDropdown() {
         const dropdown = document.getElementById('profileDropdown');
-        if (dropdown) {
-            dropdown.classList.toggle('show');
-        }
+        if (dropdown) dropdown.classList.toggle('show');
     }
 
     window.addEventListener('click', function(e) {
@@ -465,9 +537,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     function openLogoutModal(event) {
         event.preventDefault();
         const dropdown = document.getElementById('profileDropdown');
-        if (dropdown) {
-            dropdown.classList.remove('show');
-        }
+        if (dropdown) dropdown.classList.remove('show');
         document.getElementById('logoutModal').style.display = 'flex';
     }
 
@@ -478,57 +548,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     function executeLogout() {
         window.location.href = "login.php";
     }
-
-    function getStoredData() {
-        const data = localStorage.getItem('allocatedQuartersData');
-        const storedData = data ? JSON.parse(data) : [];
-
-        const mergedData = [...serverAllocatedData];
-        storedData.forEach(item => {
-            const isDuplicate = mergedData.some(existing =>
-                existing.nic === item.nic && existing.computerNo === item.computerNo
-            );
-            if (!isDuplicate) {
-                mergedData.push(item);
-            }
-        });
-
-        return mergedData;
-    }
-
-    function loadTableData() {
-        const tbody = document.getElementById('allocatedBody');
-        tbody.innerHTML = '';
-        const data = getStoredData();
-
-        if (data.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="12" style="text-align: center; color: #64748b; padding: 25px;">No allocated quarters records found.</td></tr>`;
-            return;
-        }
-
-        data.forEach((item, index) => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${index + 1}</td>
-                <td>${item.nic}</td>
-                <td>${item.computerNo}</td>
-                <td>${item.quarterNo || '-'}</td>
-                <td>${item.quarterName || '-'}</td>
-                <td>${item.quarterLocation || '-'}</td>
-                <td>${item.quarterType}</td>
-                <td>${item.residentName}</td>
-                <td>${item.designation}</td>
-                <td>${item.workplace}</td>
-                <td>${item.allocatedDate}</td>
-                <td>${item.other || 'None'}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-    }
-
-    window.addEventListener('DOMContentLoaded', () => { 
-        loadTableData(); 
-    });
 </script>
 
 <?php

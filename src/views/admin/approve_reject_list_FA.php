@@ -1,6 +1,10 @@
 <?php
 /**
- * Approved & Rejected Applications Log - Sri Lanka Railways
+ * Approved & Rejected Applications Log - Final Approver - Sri Lanka Railways
+ * --------------------------------------------------------------------------
+ * Shows the applications the Final Approver has already decided on:
+ *   - Approved List  -> final_status = 'approved'
+ *   - Rejected List  -> final_status = 'rejected' (uses final_reason)
  */
 require_once __DIR__ . '/../../../config/config.php';
 
@@ -11,40 +15,69 @@ if (session_status() === PHP_SESSION_NONE) {
 $pageTitle = "Approved & Rejected Applications Log - Sri Lanka Railways";
 
 $userData = [
-    'name' => 'Final Approver',
-    'role' => 'Sri Lanka Railways - AOT',
+    'name'     => $_SESSION['user_name'] ?? 'Final Approver',
+    'role'     => 'Sri Lanka Railways - AOT',
     'initials' => 'FA'
 ];
 
-$logData = [
-    ['id' => 1, 'appNo' => 'SLR/AOT/2026/0001', 'nic' => '981234567V', 'compNo' => '101', 'name' => 'A. B. Perera', 'desig' => 'Station Master', 'status' => 'Approved', 'reason' => '-'],
-    ['id' => 2, 'appNo' => 'SLR/AOT/2026/0002', 'nic' => '957891234V', 'compNo' => '102', 'name' => 'K. D. Silva', 'desig' => 'Signal Inspector', 'status' => 'Rejected', 'reason' => 'Incomplete documentation regarding current technical qualifications.'],
-    ['id' => 3, 'appNo' => 'SLR/AOT/2026/0003', 'nic' => '923456789V', 'compNo' => '105', 'name' => 'M. N. Fernando', 'desig' => 'Locomotive Driver', 'status' => 'Approved', 'reason' => '-'],
-    ['id' => 4, 'appNo' => 'SLR/AOT/2026/0004', 'nic' => '904561238V', 'compNo' => '110', 'name' => 'S. K. Jayasundara', 'desig' => 'Way Inspector', 'status' => 'Rejected', 'reason' => 'Does not meet the minimum service requirement period.'],
-    ['id' => 5, 'appNo' => 'SLR/AOT/2026/0005', 'nic' => '945612378V', 'compNo' => '112', 'name' => 'P. R. Gunawardena', 'desig' => 'Telecommunication Tech', 'status' => 'Approved', 'reason' => '-']
+$user = [
+    'name' => $userData['name']
 ];
 
-$activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'approved';
-$searchQuery = isset($_GET['search']) ? trim($_GET['search']) : '';
+$activeTab   = ($_GET['tab'] ?? 'approved') === 'rejected' ? 'rejected' : 'approved';
+$searchQuery = trim($_GET['search'] ?? '');
 
-// PHP filtering function[cite: 6, 7]
-function filterData($data, $status, $query) {
-    return array_filter($data, function($item) use ($status, $query) {
-        if ($item['status'] !== $status) return false;
-        if ($query !== '') {
-            $q = strtolower($query);
-            return strpos(strtolower($item['nic']), $q) !== false || strpos(strtolower($item['name']), $q) !== false;
-        }
-        return true;
-    });
+$conn = getDBConnection();
+
+// -------------------------------------------------------------
+// Fetch all Final-Approver-decided applications
+// -------------------------------------------------------------
+$sql = "SELECT a.id,
+               a.application_no   AS appNo,
+               a.nic,
+               a.computer_no      AS compNo,
+               a.final_status,
+               a.final_reason,
+               u.name,
+               COALESCE(u.applicant_designation, '') AS desig
+          FROM applications AS a
+    INNER JOIN users        AS u ON u.nic = a.nic
+         WHERE a.final_status IN ('approved', 'rejected')";
+
+if ($searchQuery !== '') {
+    $sql .= " AND (a.application_no LIKE ?
+                OR a.nic LIKE ?
+                OR a.computer_no LIKE ?
+                OR u.name LIKE ?)";
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date DESC, a.id DESC');
+    $searchTerm = '%' . $searchQuery . '%';
+    $stmt->bind_param('ssss', $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+} else {
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date DESC, a.id DESC');
 }
 
-$approvedList = filterData($logData, 'Approved', $searchQuery);
-$rejectedList = filterData($logData, 'Rejected', $searchQuery);
+$stmt->execute();
+$rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
 
-// Admin Header include karni[cite: 6]
+// -------------------------------------------------------------
+// Split into approved / rejected
+// -------------------------------------------------------------
+$approvedList = [];
+$rejectedList = [];
+
+foreach ($rows as $row) {
+    if ($row['final_status'] === 'approved') {
+        $approvedList[] = $row;
+    } else {
+        $rejectedList[] = $row;
+    }
+}
+
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
+
 <style>
     :root {
         --primary-color: #7A1C1C;
@@ -373,6 +406,9 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     .reason-text {
         color: #475569;
         font-style: italic;
+        white-space: normal;
+        word-break: break-word;
+        text-align: left;
     }
 
     .custom-modal {
@@ -527,10 +563,10 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     <!-- Tab Switcher Buttons -->
     <div class="tab-buttons-bar">
         <a href="?tab=approved<?php echo $searchQuery !== '' ? '&search=' . urlencode($searchQuery) : ''; ?>" id="approvedTabBtn" class="tab-btn <?php echo $activeTab === 'approved' ? 'active' : ''; ?>">
-            <i class="fa-solid fa-clipboard-check"></i> Approved List
+            <i class="fa-solid fa-clipboard-check"></i> Approved List (<?php echo count($approvedList); ?>)
         </a>
         <a href="?tab=rejected<?php echo $searchQuery !== '' ? '&search=' . urlencode($searchQuery) : ''; ?>" id="rejectedTabBtn" class="tab-btn <?php echo $activeTab === 'rejected' ? 'active' : ''; ?>">
-            <i class="fa-solid fa-ban"></i> Rejected List
+            <i class="fa-solid fa-ban"></i> Rejected List (<?php echo count($rejectedList); ?>)
         </a>
     </div>
 
@@ -574,13 +610,13 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                             <?php $i = 1; foreach ($approvedList as $item): ?>
                                 <tr>
                                     <td><?php echo $i++; ?></td>
-                                    <td><strong><?php echo htmlspecialchars($item['appNo']); ?></strong></td>
+                                    <td><strong><?php echo htmlspecialchars($item['appNo'] ?? (string)$item['id']); ?></strong></td>
                                     <td><?php echo htmlspecialchars($item['nic']); ?></td>
                                     <td><?php echo htmlspecialchars($item['compNo']); ?></td>
                                     <td><?php echo htmlspecialchars($item['name']); ?></td>
                                     <td><?php echo htmlspecialchars($item['desig']); ?></td>
                                     <td><span class="badge badge-approved"><i class="fa-solid fa-check" title="Approved"></i></span></td>
-                                    <td><span class="reason-text"><?php echo htmlspecialchars($item['reason']); ?></span></td>
+                                    <td><span class="reason-text"><?php echo htmlspecialchars($item['final_reason'] ?? '-'); ?></span></td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>
@@ -630,13 +666,13 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                             <?php $i = 1; foreach ($rejectedList as $item): ?>
                                 <tr>
                                     <td><?php echo $i++; ?></td>
-                                    <td><strong><?php echo htmlspecialchars($item['appNo']); ?></strong></td>
+                                    <td><strong><?php echo htmlspecialchars($item['appNo'] ?? (string)$item['id']); ?></strong></td>
                                     <td><?php echo htmlspecialchars($item['nic']); ?></td>
                                     <td><?php echo htmlspecialchars($item['compNo']); ?></td>
                                     <td><?php echo htmlspecialchars($item['name']); ?></td>
                                     <td><?php echo htmlspecialchars($item['desig']); ?></td>
                                     <td><span class="badge badge-rejected"><i class="fa-solid fa-xmark" title="Rejected"></i></span></td>
-                                    <td><span class="reason-text"><?php echo htmlspecialchars($item['reason']); ?></span></td>
+                                    <td><span class="reason-text"><?php echo htmlspecialchars($item['final_reason'] ?? '-'); ?></span></td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>
@@ -696,6 +732,5 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 </script>
 
 <?php
-// Admin Footer include කිරීම (Corrected Footer integration)[cite: 7]
 require_once __DIR__ . '/../layouts/admin_footer.php';
 ?>
