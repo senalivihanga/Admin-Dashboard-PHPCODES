@@ -1,6 +1,8 @@
 <?php
 /**
- * Approved & Rejected Applications Log - Sri Lanka Railways (SC)
+ * Approved Applications Log - Sri Lanka Railways (SC)
+ * Subject Clerk sees ONLY applications they have approved
+ * (Subject Clerk cannot reject at this stage).
  */
 require_once __DIR__ . '/../../../config/config.php';
 
@@ -8,28 +10,24 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Page Title
-$pageTitle = "Approved & Rejected Applications Log - Sri Lanka Railways";
+$pageTitle = "Approved Applications Log - Sri Lanka Railways";
 
-$activeTab = ($_GET['tab'] ?? 'approved') === 'rejected' ? 'rejected' : 'approved';
 $searchQuery = trim($_GET['search'] ?? '');
 $approvedList = [];
-$rejectedList = [];
 
 $userData = [
-    'name' => 'Subject Clerk',
-    'role' => 'Sri Lanka Railways - AOT',
+    'name'     => 'Subject Clerk',
+    'role'     => 'Sri Lanka Railways - AOT',
     'initials' => 'SC'
 ];
 
 $conn = getDBConnection();
 
-// Fetch SC level applications (clerk_status in 'approved', 'rejected')
 $sql = "SELECT a.id, a.application_no, a.nic, a.computer_no, a.clerk_status,
                a.clerk_reason, a.application_status, u.name, u.applicant_designation
         FROM applications AS a
         INNER JOIN users AS u ON u.nic = a.nic
-        WHERE a.clerk_status IN ('approved', 'rejected')";
+        WHERE a.clerk_status = 'approved'";
 
 if ($searchQuery !== '') {
     $sql .= " AND (a.application_no LIKE ? OR a.nic LIKE ? OR a.computer_no LIKE ? OR u.name LIKE ?)";
@@ -41,20 +39,10 @@ if ($searchQuery !== '') {
 }
 
 $stmt->execute();
-$logData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$approvedList = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 $conn->close();
 
-foreach ($logData as $item) {
-    $item['reason'] = $item['clerk_reason'] ?: '-';
-    if ($item['clerk_status'] === 'approved') {
-        $approvedList[] = $item;
-    } else {
-        $rejectedList[] = $item;
-    }
-}
-
-// Include Admin Header
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
 
@@ -183,41 +171,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         background: #fee2e2;
     }
 
-    /* Tab Switcher Buttons */
-    .tab-buttons-bar {
-        display: flex;
-        gap: 12px;
-        margin-bottom: 20px;
-        flex-wrap: wrap;
-    }
-
-    .tab-btn {
-        background-color: #e2e8f0;
-        color: #334155;
-        border: none;
-        padding: 10px 22px;
-        border-radius: 8px;
-        cursor: pointer;
-        font-weight: 600;
-        font-size: 0.9rem;
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        text-decoration: none;
-        transition: all 0.2s ease;
-    }
-
-    #approvedTabBtn.active, 
-    #rejectedTabBtn.active {
-        background-color: var(--primary-color);
-        color: white;
-        box-shadow: 0 4px 6px -1px rgba(122, 28, 28, 0.2);
-    }
-
-    .tab-btn:hover:not(.active) {
-        background-color: #cbd5e1;
-    }
-
     /* Search and Action Bar */
     .search-card {
         background: var(--card-bg);
@@ -297,12 +250,12 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         transition: background 0.2s;
     }
 
-    .search-btn, .rejected-search-btn {
+    .search-btn {
         background-color: var(--primary-color);
         color: white;
     }
 
-    .search-btn:hover, .rejected-search-btn:hover {
+    .search-btn:hover {
         background-color: var(--primary-dark);
     }
 
@@ -337,11 +290,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         color: #166534;
     }
 
-    .badge-rejected {
-        background-color: #fee2e2;
-        color: #991b1b;
-    }
-
     /* Table Card Containers */
     .table-card {
         background: var(--card-bg);
@@ -352,10 +300,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         overflow-x: auto;
         width: 100%;
         box-sizing: border-box;
-    }
-
-    .table-card-rejected {
-        border-top: 5px solid var(--primary-color);
     }
 
     .table-responsive {
@@ -460,28 +404,14 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     .btn-modal-confirm { background-color: #ef4444; }
     .btn-modal-cancel { background-color: #64748b; }
 
-    /* Mobile Responsive Enhancements */
+    /* Mobile Responsive */
     @media (max-width: 768px) {
-        .approval-container {
-            padding: 10px 15px;
-        }
-        .approval-container h2 {
-            font-size: 1.4rem;
-        }
-        .search-card {
-            flex-direction: column;
-            align-items: stretch;
-        }
-        .search-wrapper {
-            width: 100%;
-        }
-        .search-input-container {
-            max-width: 100%;
-        }
-        .search-btn, .rejected-search-btn, .print-btn {
-            width: 100%;
-            justify-content: center;
-        }
+        .approval-container { padding: 10px 15px; }
+        .approval-container h2 { font-size: 1.4rem; }
+        .search-card { flex-direction: column; align-items: stretch; }
+        .search-wrapper { width: 100%; }
+        .search-input-container { max-width: 100%; }
+        .search-btn, .print-btn { width: 100%; justify-content: center; }
     }
 
     /* Print Specific CSS */
@@ -497,19 +427,11 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             print-color-adjust: exact;
         }
 
-        .back-link, .user-profile-wrapper, .search-card, .tab-buttons-bar {
+        .back-link, .user-profile-wrapper, .search-card {
             display: none !important;
         }
 
-        .table-section {
-            display: none !important;
-        }
-
-        .table-section.print-active {
-            display: block !important;
-        }
-
-        .table-card, .table-card-rejected {
+        .table-card {
             box-shadow: none !important;
             border: none !important;
             padding: 0 !important;
@@ -543,37 +465,28 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
             <div id="profileDropdown" class="profile-dropdown">
                 <a href="edit_profile.php"><i class="fa-solid fa-user-pen"></i> Edit Profile</a>
-                <a href="SC.php"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
+                <a href="SC_dashboard.php"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
                 <a href="#" class="logout-btn" onclick="openLogoutModal(event)"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
             </div>
         </div>
     <?php endif; ?>
 
     <div class="approval-header">
-        <h2>Approved & Rejected Applications Log</h2>
+        <h2>Approved Applications Log</h2>
     </div>
 
-    <!-- Tab Switcher Buttons -->
-    <div class="tab-buttons-bar">
-        <a href="?tab=approved<?php echo $searchQuery !== '' ? '&search=' . urlencode($searchQuery) : ''; ?>" id="approvedTabBtn" class="tab-btn <?php echo $activeTab === 'approved' ? 'active' : ''; ?>">
-            <i class="fa-solid fa-clipboard-check"></i> Approved List
-        </a>
-        <a href="?tab=rejected<?php echo $searchQuery !== '' ? '&search=' . urlencode($searchQuery) : ''; ?>" id="rejectedTabBtn" class="tab-btn <?php echo $activeTab === 'rejected' ? 'active' : ''; ?>">
-            <i class="fa-solid fa-clipboard-check"></i> Rejected List
-        </a>
-    </div>
-
-    <!-- 1. Approved Table Section -->
-    <div id="approvedSection" class="table-section <?php echo $activeTab === 'approved' ? 'print-active' : ''; ?>" style="display: <?php echo $activeTab === 'approved' ? 'block' : 'none'; ?>;">
+    <!-- Approved Table Section -->
+    <div id="approvedSection" class="table-section print-active">
         <h3 class="section-print-title" style="color: var(--primary-color);">Approved List</h3>
-        
+
         <form method="GET" action="" class="search-card">
-            <input type="hidden" name="tab" value="approved">
             <div class="search-wrapper">
                 <div class="search-input-container">
-                    <input type="text" name="search" id="approvedSearchInput" class="search-input" placeholder="Search by NIC or Name..." value="<?php echo htmlspecialchars($activeTab === 'approved' ? $searchQuery : ''); ?>">
-                    <?php if ($activeTab === 'approved' && $searchQuery !== ''): ?>
-                        <a href="?tab=approved" class="clear-input-btn" title="Clear Search"><i class="fa-solid fa-xmark"></i></a>
+                    <input type="text" name="search" id="approvedSearchInput" class="search-input"
+                           placeholder="Search by NIC or Name..."
+                           value="<?php echo htmlspecialchars($searchQuery); ?>">
+                    <?php if ($searchQuery !== ''): ?>
+                        <a href="?" class="clear-input-btn" title="Clear Search"><i class="fa-solid fa-xmark"></i></a>
                     <?php endif; ?>
                 </div>
                 <button type="submit" class="search-btn"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
@@ -598,7 +511,11 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                     </thead>
                     <tbody>
                         <?php if (empty($approvedList)): ?>
-                            <tr><td colspan="8" style="text-align: center; color: #64748b; padding: 25px;">No approved records found.</td></tr>
+                            <tr>
+                                <td colspan="8" style="text-align: center; color: #64748b; padding: 25px;">
+                                    No approved records found.
+                                </td>
+                            </tr>
                         <?php else: ?>
                             <?php $i = 1; foreach ($approvedList as $item): ?>
                                 <tr>
@@ -609,63 +526,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                                     <td><?php echo htmlspecialchars($item['name']); ?></td>
                                     <td><?php echo htmlspecialchars($item['applicant_designation'] ?? ''); ?></td>
                                     <td><span class="badge badge-approved"><i class="fa-solid fa-check" title="Approved"></i></span></td>
-                                    <td><span class="reason-text"><?php echo htmlspecialchars($item['reason']); ?></span></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- 2. Rejected Table Section -->
-    <div id="rejectedSection" class="table-section <?php echo $activeTab === 'rejected' ? 'print-active' : ''; ?>" style="display: <?php echo $activeTab === 'rejected' ? 'block' : 'none'; ?>;">
-        <h3 class="section-print-title" style="color: var(--primary-color);">Rejected List</h3>
-
-        <form method="GET" action="" class="search-card">
-            <input type="hidden" name="tab" value="rejected">
-            <div class="search-wrapper">
-                <div class="search-input-container">
-                    <input type="text" name="search" id="rejectedSearchInput" class="search-input" placeholder="Search by NIC or Name..." value="<?php echo htmlspecialchars($activeTab === 'rejected' ? $searchQuery : ''); ?>">
-                    <?php if ($activeTab === 'rejected' && $searchQuery !== ''): ?>
-                        <a href="?tab=rejected" class="clear-input-btn" title="Clear Search"><i class="fa-solid fa-xmark"></i></a>
-                    <?php endif; ?>
-                </div>
-                <button type="submit" class="search-btn rejected-search-btn"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
-            </div>
-            <button type="button" class="print-btn" onclick="window.print()"><i class="fa-solid fa-print"></i> Print / Save as PDF</button>
-        </form>
-
-        <div class="table-card table-card-rejected">
-            <div class="table-responsive">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>No.</th>
-                            <th>Application Number</th>
-                            <th>NIC</th>
-                            <th>Computer Number</th>
-                            <th>Name</th>
-                            <th>Designation</th>
-                            <th>Status</th>
-                            <th>Remarks / Reason</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($rejectedList)): ?>
-                            <tr><td colspan="8" style="text-align: center; color: #64748b; padding: 25px;">No rejected records found.</td></tr>
-                        <?php else: ?>
-                            <?php $i = 1; foreach ($rejectedList as $item): ?>
-                                <tr>
-                                    <td><?php echo $i++; ?></td>
-                                    <td><strong><?php echo htmlspecialchars($item['application_no'] ?? (string)$item['id']); ?></strong></td>
-                                    <td><?php echo htmlspecialchars($item['nic']); ?></td>
-                                    <td><?php echo htmlspecialchars($item['computer_no']); ?></td>
-                                    <td><?php echo htmlspecialchars($item['name']); ?></td>
-                                    <td><?php echo htmlspecialchars($item['applicant_designation'] ?? ''); ?></td>
-                                    <td><span class="badge badge-rejected"><i class="fa-solid fa-xmark" title="Rejected"></i></span></td>
-                                    <td><span class="reason-text"><?php echo htmlspecialchars($item['reason']); ?></span></td>
+                                    <td><span class="reason-text"><?php echo htmlspecialchars($item['clerk_reason'] ?: '-'); ?></span></td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>
@@ -724,6 +585,5 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 </script>
 
 <?php
-// Include Admin Footer
 require_once __DIR__ . '/../layouts/admin_footer.php';
 ?>
