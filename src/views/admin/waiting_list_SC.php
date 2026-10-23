@@ -1,6 +1,12 @@
 <?php
 /**
- * Waiting Lists - Sri Lanka Railways Admin
+ * Waiting Lists - Sri Lanka Railways Admin (Subject Clerk)
+ *
+ * Mirrors waiting_list_FA.php:
+ *   - Live data from `waiting_list` joined to `users` and `applications`
+ *   - Only rows whose application is finally approved are shown
+ *   - General tab shows all; other tabs populate by designation
+ *     (currently everyone falls into General until other designations exist).
  */
 require_once __DIR__ . '/../../../config/config.php';
 
@@ -11,93 +17,76 @@ if (session_status() === PHP_SESSION_NONE) {
 $pageTitle = "Waiting Lists - Sri Lanka Railways Admin";
 
 $userData = [
-    'name' => 'Subject Clerk',
-    'role' => 'Sri Lanka Railways - AOT',
+    'name'     => 'Subject Clerk',
+    'role'     => 'Sri Lanka Railways - AOT',
     'initials' => 'SC'
 ];
 
-$waitingListsData = [
-    'general' => [
-        [
-            'nic' => '199812345678',
-            'computerNo' => '101',
-            'name' => 'A. B. Perera',
-            'designation' => 'Clerk',
-            'workplace' => 'Colombo Fort',
-            'allocatedDate' => '2026-01-10',
-            'houseType' => 'None',
-            'other' => 'None'
-        ],
-        [
-            'nic' => '199812345648',
-            'computerNo' => '102',
-            'name' => 'A. B. Perera',
-            'designation' => 'Clerk',
-            'workplace' => 'Colombo Fort',
-            'allocatedDate' => '2026-01-10',
-            'houseType' => 'None',
-            'other' => 'None'
-        ]
-    ],
-    'guard' => [
-        [
-            'nic' => '199287654321',
-            'computerNo' => '102',
-            'name' => 'S. K. Silva',
-            'designation' => 'Train Guard',
-            'workplace' => 'Maradana',
-            'allocatedDate' => '2026-02-14',
-            'houseType' => 'Pending',
-            'other' => 'None'
-        ]
-    ],
-    'station_master' => [
-        [
-            'nic' => '198533445566',
-            'computerNo' => '103',
-            'name' => 'M. N. Fernando',
-            'designation' => 'Station Master',
-            'workplace' => 'Gampaha',
-            'allocatedDate' => '2026-03-01',
-            'houseType' => 'Urgent',
-            'other' => 'None'
-        ]
-    ],
-    'controller' => [
-        [
-            'nic' => '199022334455',
-            'computerNo' => '104',
-            'name' => 'T. G. Rathnayake',
-            'designation' => 'Controller',
-            'workplace' => 'HQ Colombo',
-            'allocatedDate' => '2026-03-10',
-            'houseType' => 'None',
-            'other' => 'None'
-        ]
-    ],
-    'deputy_commissioner' => [
-        [
-            'nic' => '198211223344',
-            'computerNo' => '105',
-            'name' => 'W. M. D. Wickramasinghe',
-            'designation' => 'Deputy Commissioner',
-            'workplace' => 'Main Office',
-            'allocatedDate' => '2026-04-05',
-            'houseType' => 'Approved',
-            'other' => 'None'
-        ]
-    ]
-];
-
-// Handle Search Filter matching appli_approve_IB style[cite: 19, 20]
 $searchQuery = trim($_GET['search'] ?? '');
 
-if (!empty($searchQuery)) {
-    foreach ($waitingListsData as $key => $list) {
-        $waitingListsData[$key] = array_filter($list, function($item) use ($searchQuery) {
-            return stripos($item['nic'], $searchQuery) !== false || 
-                   stripos($item['name'], $searchQuery) !== false;
-        });
+$waitingListsData = [
+    'general'             => [],
+    'guard'               => [],
+    'station_master'      => [],
+    'controller'          => [],
+    'deputy_commissioner' => [],
+];
+
+$conn = getDBConnection();
+
+// Same query as waiting_list_FA.php (final-approval gate enforced)
+$sql = "SELECT wl.nic,
+               u.computer_number                        AS compNo,
+               u.name,
+               COALESCE(u.applicant_designation, '')    AS desig,
+               COALESCE(u.applicant_current_work_station, '') AS workplace,
+               wl.applied_date                          AS allocDate,
+               wl.quarter_type                          AS houseType,
+               COALESCE(wl.employee_marks, 0)           AS marks
+        FROM waiting_list AS wl
+        INNER JOIN users AS u
+                ON u.nic = wl.nic
+        INNER JOIN applications AS a
+                ON a.nic = wl.nic
+               AND a.quarter_type = wl.quarter_type
+               AND a.waiting_list_no = wl.position
+               AND a.final_status = 'approved'
+               AND a.application_status = 'approved'";
+
+if ($searchQuery !== '') {
+    $sql .= " WHERE (wl.nic LIKE ? OR u.name LIKE ?)";
+    $searchTerm = '%' . $searchQuery . '%';
+    $stmt = $conn->prepare(
+        $sql . ' ORDER BY wl.applied_date ASC, wl.employee_marks DESC, wl.id ASC'
+    );
+    $stmt->bind_param('ss', $searchTerm, $searchTerm);
+} else {
+    $stmt = $conn->prepare(
+        $sql . ' ORDER BY wl.applied_date ASC, wl.employee_marks DESC, wl.id ASC'
+    );
+}
+
+$stmt->execute();
+$rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
+
+// Everyone goes into General (matching FA), then bucket by designation
+foreach ($rows as $row) {
+    $waitingListsData['general'][] = $row;
+
+    $desig = strtolower($row['desig']);
+
+    if (str_contains($desig, 'guard')) {
+        $waitingListsData['guard'][] = $row;
+    } elseif (str_contains($desig, 'station master') || str_contains($desig, 'st. master')) {
+        $waitingListsData['station_master'][] = $row;
+    } elseif (str_contains($desig, 'controller')) {
+        $waitingListsData['controller'][] = $row;
+    } elseif (str_contains($desig, 'deputy superintendent')
+           || str_contains($desig, 'deputy commissioner')
+           || str_contains($desig, 'deputy supt')) {
+        $waitingListsData['deputy_commissioner'][] = $row;
     }
 }
 
@@ -123,26 +112,26 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
 
-    .container { 
-        max-width: 1350px; 
-        margin: 20px auto; 
-        padding: 0 20px; 
+    .container {
+        max-width: 1350px;
+        margin: 20px auto;
+        padding: 0 20px;
         width: 100%;
         box-sizing: border-box;
     }
 
-    .back-link { 
-        display: inline-flex; 
-        align-items: center; 
-        gap: 8px; 
-        color: var(--primary-color); 
-        text-decoration: none; 
-        font-weight: 600; 
-        margin-bottom: 20px; 
+    .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--primary-color);
+        text-decoration: none;
+        font-weight: 600;
+        margin-bottom: 20px;
         font-size: 0.95rem;
     }
-    .back-link:hover { 
-        text-decoration: underline; 
+    .back-link:hover {
+        text-decoration: underline;
     }
 
     .user-profile-wrapper {
@@ -206,92 +195,91 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         background: #fee2e2;
     }
 
-    .page-title { 
-        text-align: center; 
-        color: var(--primary-color); 
-        font-size: 1.8rem; 
-        margin-bottom: 25px; 
-        text-transform: uppercase; 
-        letter-spacing: 1px; 
-        text-decoration: underline; 
-        text-underline-offset: 6px; 
+    .page-title {
+        text-align: center;
+        color: var(--primary-color);
+        font-size: 1.8rem;
+        margin-bottom: 25px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        text-decoration: underline;
+        text-underline-offset: 6px;
         font-weight: 700;
     }
 
-    .tab-container { 
-        display: flex; 
-        flex-wrap: wrap; 
-        gap: 10px; 
-        justify-content: center; 
-        margin-bottom: 25px; 
+    .tab-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+        margin-bottom: 25px;
     }
 
-    .tab-btn { 
-        background-color: #f1f5f9; 
-        color: var(--text-main); 
-        border: 1px solid #cbd5e1; 
-        padding: 10px 18px; 
-        border-radius: 8px; 
-        cursor: pointer; 
-        font-weight: 600; 
-        font-size: 0.9rem; 
-        transition: all 0.2s ease; 
+    .tab-btn {
+        background-color: #f1f5f9;
+        color: var(--text-main);
+        border: 1px solid #cbd5e1;
+        padding: 10px 18px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.9rem;
+        transition: all 0.2s ease;
     }
-    .tab-btn:hover { 
-        background-color: #e2e8f0; 
+    .tab-btn:hover {
+        background-color: #e2e8f0;
     }
-    .tab-btn.active { 
-        background-color: var(--primary-color); 
-        color: white; 
-        border-color: var(--primary-color); 
+    .tab-btn.active {
+        background-color: var(--primary-color);
+        color: white;
+        border-color: var(--primary-color);
     }
 
-    /* Search card matching appli_approve_IB style[cite: 19] */
-    .search-card { 
-        background: var(--card-bg); 
-        padding: 18px 22px; 
-        border-radius: 12px; 
-        box-shadow: 0 4px 15px rgba(0,0,0,0.04); 
-        margin-bottom: 25px; 
-        display: flex; 
-        justify-content: space-between; 
-        align-items: center; 
-        flex-wrap: wrap; 
-        gap: 15px; 
+    .search-card {
+        background: var(--card-bg);
+        padding: 18px 22px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.04);
+        margin-bottom: 25px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
         border: 1px solid var(--border-color);
         width: 100%;
         box-sizing: border-box;
     }
 
-    .search-wrapper { 
-        display: flex; 
-        gap: 10px; 
-        align-items: center; 
+    .search-wrapper {
+        display: flex;
+        gap: 10px;
+        align-items: center;
         flex: 1;
         min-width: 280px;
     }
-    
+
     .search-input-container {
         position: relative;
         flex: 1;
         max-width: 380px;
     }
 
-    .search-input { 
+    .search-input {
         width: 100%;
-        padding: 10px 36px 10px 14px; 
-        border-radius: 8px; 
-        border: 1px solid #cbd5e1; 
-        font-size: 0.9rem; 
-        outline: none; 
+        padding: 10px 36px 10px 14px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        font-size: 0.9rem;
+        outline: none;
         box-sizing: border-box;
     }
-    
-    .search-input:focus { 
-        border-color: var(--primary-color); 
-        box-shadow: 0 0 0 3px rgba(122, 28, 28, 0.1); 
+
+    .search-input:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(122, 28, 28, 0.1);
     }
-    
+
     .search-clear-icon {
         position: absolute;
         right: 12px;
@@ -305,86 +293,86 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         justify-content: center;
         transition: color 0.2s;
     }
-    
+
     .search-clear-icon:hover {
         color: var(--text-main);
     }
 
-    .search-btn { 
-        border: none; 
-        padding: 10px 18px; 
-        border-radius: 8px; 
-        font-weight: 600; 
-        cursor: pointer; 
-        display: inline-flex; 
-        align-items: center; 
-        gap: 6px; 
+    .search-btn {
+        border: none;
+        padding: 10px 18px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         font-size: 0.9rem;
-        text-decoration: none; 
-        transition: background 0.2s; 
-        background-color: var(--primary-color); 
-        color: white; 
+        text-decoration: none;
+        transition: background 0.2s;
+        background-color: var(--primary-color);
+        color: white;
     }
-    .search-btn:hover { 
-        background-color: var(--primary-dark); 
-    }
-
-    .table-card { 
-        background: var(--card-bg); 
-        padding: 25px; 
-        border-radius: 12px; 
-        box-shadow: 0 8px 20px rgba(0,0,0,0.06); 
-        border-top: 5px solid var(--primary-color); 
-        display: none; 
-        overflow-x: auto; 
-    }
-    .table-card.active-table { 
-        display: block; 
+    .search-btn:hover {
+        background-color: var(--primary-dark);
     }
 
-    .section-header-bar { 
-        display: flex; 
-        justify-content: space-between; 
-        align-items: center; 
-        margin-bottom: 20px; 
-        flex-wrap: wrap; 
-        gap: 12px; 
+    .table-card {
+        background: var(--card-bg);
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+        border-top: 5px solid var(--primary-color);
+        display: none;
+        overflow-x: auto;
+    }
+    .table-card.active-table {
+        display: block;
     }
 
-    .section-subtitle { 
-        color: var(--primary-color); 
-        font-size: 1.3rem; 
-        font-weight: 700; 
-        margin: 0; 
+    .section-header-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+        gap: 12px;
     }
 
-    .waiting-table { 
-        width: 100%; 
-        border-collapse: collapse; 
-        text-align: left; 
-        min-width: 900px; 
+    .section-subtitle {
+        color: var(--primary-color);
+        font-size: 1.3rem;
+        font-weight: 700;
+        margin: 0;
     }
-    .waiting-table th, .waiting-table td { 
-        padding: 12px 10px; 
-        border: 1px solid #cbd5e1; 
-        vertical-align: middle; 
-        font-size: 0.85rem; 
-        text-align: center; 
+
+    .waiting-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        min-width: 900px;
     }
-    .waiting-table th { 
-        background-color: #f8fafc; 
-        color: var(--text-main); 
-        font-weight: 700; 
+    .waiting-table th, .waiting-table td {
+        padding: 12px 10px;
+        border: 1px solid #cbd5e1;
+        vertical-align: middle;
+        font-size: 0.85rem;
+        text-align: center;
+    }
+    .waiting-table th {
+        background-color: #f8fafc;
+        color: var(--text-main);
+        font-weight: 700;
         text-transform: uppercase;
         font-size: 0.75rem;
     }
-    .waiting-table tbody td { 
-        color: #334155; 
-        font-size: 0.85rem; 
-        font-weight: 400; 
+    .waiting-table tbody td {
+        color: #334155;
+        font-size: 0.85rem;
+        font-weight: 400;
     }
-    .waiting-table td:nth-child(4), .waiting-table td:nth-child(7) { 
-        text-align: left; 
+    .waiting-table td:nth-child(4), .waiting-table td:nth-child(6) {
+        text-align: left;
     }
 
     .custom-modal {
@@ -479,7 +467,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
             <div id="profileDropdown" class="profile-dropdown">
                 <a href="edit_profile.php"><i class="fa-solid fa-user-pen"></i> Edit Profile</a>
-                <a href="assign-quarters-SC.php"><i class="fa-solid fa-arrow-left"></i> Back to Assign Quarters Management</a>
+                <a href="assign_quarters_SC.php"><i class="fa-solid fa-arrow-left"></i> Back to Assign Quarters Management</a>
                 <a href="#" class="logout-btn" onclick="openLogoutModal(event)"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
             </div>
         </div>
@@ -487,7 +475,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
     <h2 class="page-title">Waiting Lists</h2>
 
-    <!-- Tabs -->
     <div class="tab-container">
         <button class="tab-btn active" onclick="showTable('general', event)">1. General List</button>
         <button class="tab-btn" onclick="showTable('guard', event)">2. Guard List</button>
@@ -496,11 +483,12 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         <button class="tab-btn" onclick="showTable('deputy_commissioner', event)">5. Deputy Superintendent (Transportation) Colombo List</button>
     </div>
 
-    <!-- Search Card matching appli_approve_IB style[cite: 19] -->
     <form method="GET" action="" class="search-card">
         <div class="search-wrapper">
             <div class="search-input-container">
-                <input type="text" name="search" class="search-input" placeholder="Search by NIC or Name..." value="<?php echo htmlspecialchars($searchQuery); ?>">
+                <input type="text" name="search" class="search-input"
+                       placeholder="Search by NIC or Name..."
+                       value="<?php echo htmlspecialchars($searchQuery); ?>">
                 <?php if (!empty($searchQuery)): ?>
                     <a href="?" class="search-clear-icon" title="Clear Search"><i class="fa-solid fa-xmark"></i></a>
                 <?php endif; ?>
@@ -509,220 +497,66 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         </div>
     </form>
 
-    <!-- 1. General List Table -->
-    <div id="general" class="table-card active-table">
-        <div class="section-header-bar">
-            <h3 class="section-subtitle">1. General List</h3>
-        </div>
-        <div class="table-responsive">
-            <table class="waiting-table">
-                <thead>
-                    <tr>
-                        <th>No.</th>
-                        <th>NIC</th>
-                        <th>Computer No.</th>
-                        <th>Applicant's Name</th>
-                        <th>Designation</th>
-                        <th>Workplace</th>
-                        <th>Allocated Date</th>
-                        <th>Allocated House Type</th>
-                        <th>Other</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($waitingListsData['general'])): ?>
-                        <tr><td colspan="9" style="text-align: center; color: #64748b; padding: 25px;">No records found.</td></tr>
-                    <?php else: ?>
-                        <?php $no = 1; foreach ($waitingListsData['general'] as $row): ?>
+    <?php
+    $tabInfo = [
+        'general'             => '1. General List',
+        'guard'               => '2. Guard List',
+        'station_master'      => '3. Station Master List',
+        'controller'          => '4. Controller List',
+        'deputy_commissioner' => '5. Deputy Superintendent (Transportation) Colombo List',
+    ];
+    $isFirst = true;
+    foreach ($tabInfo as $key => $title):
+        $rows = $waitingListsData[$key] ?? [];
+        $activeClass = $isFirst ? 'active-table' : '';
+        $isFirst = false;
+    ?>
+        <div id="<?php echo $key; ?>" class="table-card <?php echo $activeClass; ?>">
+            <div class="section-header-bar">
+                <h3 class="section-subtitle"><?php echo htmlspecialchars($title); ?></h3>
+            </div>
+            <div class="table-responsive">
+                <table class="waiting-table">
+                    <thead>
+                        <tr>
+                            <th>No.</th>
+                            <th>NIC</th>
+                            <th>Computer No.</th>
+                            <th>Applicant's Name</th>
+                            <th>Designation</th>
+                            <th>Workplace</th>
+                            <th>Applied Date</th>
+                            <th>Quarter Type</th>
+                            <th>Marks</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($rows)): ?>
                             <tr>
-                                <td><?php echo $no++; ?></td>
-                                <td><?php echo htmlspecialchars($row['nic']); ?></td>
-                                <td><?php echo htmlspecialchars($row['computerNo']); ?></td>
-                                <td style="text-align: center;"><?php echo htmlspecialchars($row['name']); ?></td>
-                                <td><?php echo htmlspecialchars($row['designation']); ?></td>
-                                <td style="text-align: center;"><?php echo htmlspecialchars($row['workplace']); ?></td>
-                                <td style="text-align: center;"><?php echo htmlspecialchars($row['allocatedDate']); ?></td>
-                                <td><?php echo htmlspecialchars($row['houseType']); ?></td>
-                                <td><?php echo htmlspecialchars($row['other']); ?></td>
+                                <td colspan="9" style="text-align: center; color: #64748b; padding: 25px;">
+                                    No records found.
+                                </td>
                             </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+                        <?php else: ?>
+                            <?php $no = 1; foreach ($rows as $row): ?>
+                                <tr>
+                                    <td><?php echo $no++; ?></td>
+                                    <td><?php echo htmlspecialchars($row['nic']); ?></td>
+                                    <td><?php echo htmlspecialchars($row['compNo'] ?? '-'); ?></td>
+                                    <td style="text-align: left;"><?php echo htmlspecialchars($row['name']); ?></td>
+                                    <td><?php echo htmlspecialchars($row['desig'] ?: '-'); ?></td>
+                                    <td style="text-align: left;"><?php echo htmlspecialchars($row['workplace'] ?: '-'); ?></td>
+                                    <td><?php echo htmlspecialchars($row['allocDate'] ?? '-'); ?></td>
+                                    <td><?php echo htmlspecialchars($row['houseType'] ?? '-'); ?></td>
+                                    <td><?php echo htmlspecialchars((string)($row['marks'] ?? 0)); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
-    </div>
-
-    <!-- 2. Guard List Table -->
-    <div id="guard" class="table-card">
-        <div class="section-header-bar">
-            <h3 class="section-subtitle">2. Guard List</h3>
-        </div>
-        <div class="table-responsive">
-            <table class="waiting-table">
-                <thead>
-                    <tr>
-                        <th>No.</th>
-                        <th>NIC</th>
-                        <th>Computer No.</th>
-                        <th>Applicant's Name</th>
-                        <th>Designation</th>
-                        <th>Workplace</th>
-                        <th>Allocated Date</th>
-                        <th>Allocated House Type</th>
-                        <th>Other</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($waitingListsData['guard'])): ?>
-                        <tr><td colspan="9" style="text-align: center; color: #64748b; padding: 25px;">No records found.</td></tr>
-                    <?php else: ?>
-                        <?php $no = 1; foreach ($waitingListsData['guard'] as $row): ?>
-                            <tr>
-                                <td><?php echo $no++; ?></td>
-                                <td><?php echo htmlspecialchars($row['nic']); ?></td>
-                                <td><?php echo htmlspecialchars($row['computerNo']); ?></td>
-                                <td style="text-align: center;"><?php echo htmlspecialchars($row['name']); ?></td>
-                                <td><?php echo htmlspecialchars($row['designation']); ?></td>
-                                <td style="text-align: center;"><?php echo htmlspecialchars($row['workplace']); ?></td>
-                                <td style="text-align: center;"><?php echo htmlspecialchars($row['allocatedDate']); ?></td>
-                                <td><?php echo htmlspecialchars($row['houseType']); ?></td>
-                                <td><?php echo htmlspecialchars($row['other']); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- 3. Station Master List Table -->
-    <div id="station_master" class="table-card">
-        <div class="section-header-bar">
-            <h3 class="section-subtitle">3. Station Master List</h3>
-        </div>
-        <div class="table-responsive">
-            <table class="waiting-table">
-                <thead>
-                    <tr>
-                        <th>No.</th>
-                        <th>NIC</th>
-                        <th>Computer No.</th>
-                        <th>Applicant's Name</th>
-                        <th>Designation</th>
-                        <th>Workplace</th>
-                        <th>Allocated Date</th>
-                        <th>Allocated House Type</th>
-                        <th>Other</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($waitingListsData['station_master'])): ?>
-                        <tr><td colspan="9" style="text-align: center; color: #64748b; padding: 25px;">No records found.</td></tr>
-                    <?php else: ?>
-                        <?php $no = 1; foreach ($waitingListsData['station_master'] as $row): ?>
-                            <tr>
-                                <td><?php echo $no++; ?></td>
-                                <td><?php echo htmlspecialchars($row['nic']); ?></td>
-                                <td><?php echo htmlspecialchars($row['computerNo']); ?></td>
-                                <td style="text-align: center;"><?php echo htmlspecialchars($row['name']); ?></td>
-                                <td><?php echo htmlspecialchars($row['designation']); ?></td>
-                                <td style="text-align: center;"><?php echo htmlspecialchars($row['workplace']); ?></td>
-                                <td style="text-align: center;"><?php echo htmlspecialchars($row['allocatedDate']); ?></td>
-                                <td><?php echo htmlspecialchars($row['houseType']); ?></td>
-                                <td><?php echo htmlspecialchars($row['other']); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- 4. Controller List Table -->
-    <div id="controller" class="table-card">
-        <div class="section-header-bar">
-            <h3 class="section-subtitle">4. Controller List</h3>
-        </div>
-        <div class="table-responsive">
-            <table class="waiting-table">
-                <thead>
-                    <tr>
-                        <th>No.</th>
-                        <th>NIC</th>
-                        <th>Computer No.</th>
-                        <th>Applicant's Name</th>
-                        <th>Designation</th>
-                        <th>Workplace</th>
-                        <th>Allocated Date</th>
-                        <th>Allocated House Type</th>
-                        <th>Other</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($waitingListsData['controller'])): ?>
-                        <tr><td colspan="9" style="text-align: center; color: #64748b; padding: 25px;">No records found.</td></tr>
-                    <?php else: ?>
-                        <?php $no = 1; foreach ($waitingListsData['controller'] as $row): ?>
-                            <tr>
-                                <td><?php echo $no++; ?></td>
-                                <td><?php echo htmlspecialchars($row['nic']); ?></td>
-                                <td><?php echo htmlspecialchars($row['computerNo']); ?></td>
-                                <td style="text-align: center;"><?php echo htmlspecialchars($row['name']); ?></td>
-                                <td><?php echo htmlspecialchars($row['designation']); ?></td>
-                                <td style="text-align: center;"><?php echo htmlspecialchars($row['workplace']); ?></td>
-                                <td style="text-align: center;"><?php echo htmlspecialchars($row['allocatedDate']); ?></td>
-                                <td><?php echo htmlspecialchars($row['houseType']); ?></td>
-                                <td><?php echo htmlspecialchars($row['other']); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- 5. Deputy Commissioner List Table -->
-    <div id="deputy_commissioner" class="table-card">
-        <div class="section-header-bar">
-            <h3 class="section-subtitle">5. Deputy Superintendent (Transportation) Colombo List</h3>
-        </div>
-        <div class="table-responsive">
-            <table class="waiting-table">
-                <thead>
-                    <tr>
-                        <th>No.</th>
-                        <th>NIC</th>
-                        <th>Computer No.</th>
-                        <th>Applicant's Name</th>
-                        <th>Designation</th>
-                        <th>Workplace</th>
-                        <th>Allocated Date</th>
-                        <th>Allocated House Type</th>
-                        <th>Other</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($waitingListsData['deputy_commissioner'])): ?>
-                        <tr><td colspan="9" style="text-align: center; color: #64748b; padding: 25px;">No records found.</td></tr>
-                    <?php else: ?>
-                        <?php $no = 1; foreach ($waitingListsData['deputy_commissioner'] as $row): ?>
-                            <tr>
-                                <td><?php echo $no++; ?></td>
-                                <td><?php echo htmlspecialchars($row['nic']); ?></td>
-                                <td><?php echo htmlspecialchars($row['computerNo']); ?></td>
-                                <td style="text-align: center;"><?php echo htmlspecialchars($row['name']); ?></td>
-                                <td><?php echo htmlspecialchars($row['designation']); ?></td>
-                                <td style="text-align: center;"><?php echo htmlspecialchars($row['workplace']); ?></td>
-                                <td style="text-align: center;"><?php echo htmlspecialchars($row['allocatedDate']); ?></td>
-                                <td><?php echo htmlspecialchars($row['houseType']); ?></td>
-                                <td><?php echo htmlspecialchars($row['other']); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
+    <?php endforeach; ?>
 </div>
 
 <div id="logoutModal" class="custom-modal">
