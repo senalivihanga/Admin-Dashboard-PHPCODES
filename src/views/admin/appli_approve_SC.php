@@ -39,56 +39,35 @@ $conn       = getDBConnection();
 // -------------------------------------------------------------
 // Handle clerk decision (approve / reject)
 // -------------------------------------------------------------
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
-    $id     = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
-    $reason = trim((string)($_POST['rejectionReason'] ?? ''));
 
-    if ($id && ($action === 'approve' || ($action === 'reject' && $reason !== ''))) {
-        $clerkStatus       = $action === 'approve' ? 'approved' : 'rejected';
-        $clerkReason       = $action === 'reject'  ? $reason    : null;
-        // Approve → next stage (Deputy Superintendent). Reject → back to Personal File.
-        $applicationStatus = $action === 'approve' ? 'pending_super' : 'returned_to_file';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'approve') {
+    $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
+
+    if ($id) {
+        $applicationStatus = 'pending_super';
 
         $stmt = $conn->prepare(
             "UPDATE applications
-                SET clerk_status = ?, clerk_reason = ?, application_status = ?
+                SET clerk_status = 'approved',
+                    clerk_reason = NULL,
+                    application_status = ?
               WHERE id = ?
                 AND boss_status = 'approved'
                 AND file_status = 'approved'
                 AND clerk_status = 'pending'
                 AND application_status = 'pending_clerk'"
         );
-        $stmt->bind_param('sssi', $clerkStatus, $clerkReason, $applicationStatus, $id);
+        $stmt->bind_param('si', $applicationStatus, $id);
         $stmt->execute();
 
         if ($stmt->affected_rows === 1) {
-            $alert_msg  = $action === 'approve'
-                ? 'Application approved successfully and moved to Approved List.'
-                : 'Application rejected and returned to Personal File.';
-            $alert_type = $action === 'approve' ? 'success' : 'error';
-
-            // Notify the applicant on rejection
-            if ($action === 'reject') {
-                $notif = $conn->prepare(
-                    "INSERT INTO notifications (nic, title, message, is_read)
-                     SELECT nic, 'Application Rejected',
-                            CONCAT('Your application was rejected by the Subject Clerk. Reason: ', ?),
-                            0
-                     FROM applications WHERE id = ?"
-                );
-                $notif->bind_param('si', $reason, $id);
-                $notif->execute();
-                $notif->close();
-            }
+            $alert_msg  = 'Application approved successfully and moved to Approved List.';
+            $alert_type = 'success';
         } else {
             $alert_msg  = 'This application is no longer awaiting your decision.';
             $alert_type = 'error';
         }
         $stmt->close();
-    } elseif ($action === 'reject') {
-        $alert_msg  = 'A rejection reason is required.';
-        $alert_type = 'error';
     }
 }
 
@@ -525,7 +504,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                         <th>Name</th>
                         <th>Designation</th>
                         <th>View Application</th>
-                        <th>Actions</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -554,7 +533,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                                             <input type="hidden" name="id" value="<?php echo $item['id']; ?>">
                                             <button type="submit" class="action-btn btn-approve" title="Approve"><i class="fa-solid fa-check"></i></button>
                                         </form>
-                                        <button type="button" class="action-btn btn-reject" onclick="promptReject(<?php echo $item['id']; ?>)" title="Reject"><i class="fa-solid fa-xmark"></i></button>
                                     </div>
                                 </td>
                             </tr>
@@ -566,33 +544,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     </div>
 </main>
 
-<div class="custom-msg-box" id="rejectModal">
-    <div class="msg-content">
-        <h3>Provide Rejection Reason</h3>
-        <form method="POST" id="rejectForm">
-            <input type="hidden" name="action" value="reject">
-            <input type="hidden" name="id" id="rejectRowId" value="">
-            <textarea name="rejectionReason" id="rejectionReasonInput" rows="3" placeholder="Enter reason for rejection..." required></textarea>
-            <div class="msg-btns">
-                <button type="button" class="msg-btn msg-btn-no" onclick="closeRejectModal()">Cancel</button>
-                <button type="submit" class="msg-btn msg-btn-yes">Confirm Rejection</button>
-            </div>
-        </form>
-    </div>
-</div>
-
 <script>
-    function promptReject(id) {
-        document.getElementById('rejectRowId').value = id;
-        document.getElementById('rejectionReasonInput').value = '';
-        document.getElementById('rejectModal').style.display = 'flex';
-    }
-
-    function closeRejectModal() {
-        document.getElementById('rejectModal').style.display = 'none';
-        document.getElementById('rejectRowId').value = '';
-    }
-
     document.addEventListener("DOMContentLoaded", function() {
         const alertBox = document.getElementById('systemAlert');
         if (alertBox) {

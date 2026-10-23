@@ -407,15 +407,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                 <p>Browse through historical records of fully processed, processed, approved, or rejected applications.</p>
                 <span class="tile-link-text">View Records <i class="fa-solid fa-arrow-right"></i></span>
             </a>
-
-            <a href="resubmitted_list_PF.php" class="manage-tile">
-                <div class="manage-tile-header">
-                    <h4>Resubmitted List</h4>
-                    <i class="fa-solid fa-rotate-right" style="color: #0284c7;"></i>
-                </div>
-                <p>Review applications that were resubmitted by staff following previous rejections and feedback.</p>
-                <span class="tile-link-text">Open Resubmitted Queue <i class="fa-solid fa-arrow-right"></i></span>
-            </a>
         </div>
 
     </div>
