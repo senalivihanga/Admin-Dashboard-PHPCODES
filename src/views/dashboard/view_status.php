@@ -31,8 +31,7 @@ $rawSteps = [
     2 => ['name' => 'Immediate Boss', 'key' => 'boss', 'icon' => 'fa-user-tie', 'contact' => '011 234 5679', 'color' => 'purple', 'bg' => 'bg-purple-600', 'border' => 'border-purple-600', 'badge_bg' => 'bg-purple-200 text-purple-900 border-purple-400', 'row_bg' => 'border-purple-400 bg-purple-100/80'],
     3 => ['name' => 'Personal File', 'key' => 'file', 'icon' => 'fa-folder-open', 'contact' => '011 234 5680', 'color' => 'emerald', 'bg' => 'bg-emerald-600', 'border' => 'border-emerald-600', 'badge_bg' => 'bg-emerald-200 text-emerald-900 border-emerald-400', 'row_bg' => 'border-emerald-400 bg-emerald-100/80'],
     4 => ['name' => 'Subject Clerk', 'key' => 'clerk', 'icon' => 'fa-user-pen', 'contact' => '011 234 5681', 'color' => 'indigo', 'bg' => 'bg-indigo-600', 'border' => 'border-indigo-600', 'badge_bg' => 'bg-indigo-200 text-indigo-900 border-indigo-400', 'row_bg' => 'border-indigo-400 bg-indigo-100/80'],
-    5 => ['name' => 'Branch Officer', 'key' => 'branch', 'icon' => 'fa-building-columns', 'contact' => '011 234 5682', 'color' => 'amber', 'bg' => 'bg-amber-600', 'border' => 'border-amber-600', 'badge_bg' => 'bg-amber-200 text-amber-900 border-amber-400', 'row_bg' => 'border-amber-400 bg-amber-100/80'],
-    6 => ['name' => 'Final Approver', 'key' => 'final', 'icon' => 'fa-award', 'contact' => '011 234 5683', 'color' => 'rose', 'bg' => 'bg-rose-600', 'border' => 'border-rose-600', 'badge_bg' => 'bg-rose-200 text-rose-900 border-rose-400', 'row_bg' => 'border-rose-400 bg-rose-100/80']
+    5 => ['name' => 'Final Approver', 'key' => 'final', 'icon' => 'fa-award', 'contact' => '011 234 5683', 'color' => 'rose', 'bg' => 'bg-rose-600', 'border' => 'border-rose-600', 'badge_bg' => 'bg-rose-200 text-rose-900 border-rose-400', 'row_bg' => 'border-rose-400 bg-rose-100/80']
 ];
 
 // Build status array with proper logic
@@ -47,7 +46,6 @@ $subStatus = $application['submit_status'] ?? (
 $bStatus = $application['boss_status'] ?? 'pending';
 $fStatus = $application['file_status'] ?? 'pending';
 $cStatus = $application['clerk_status'] ?? 'pending';
-$brStatus = $application['branch_status'] ?? 'pending';
 $fnStatus = $application['final_status'] ?? 'pending';
 
 $statusMap = [
@@ -55,8 +53,7 @@ $statusMap = [
     2 => $bStatus,
     3 => $fStatus,
     4 => $cStatus,
-    5 => $brStatus,
-    6 => $fnStatus
+    5 => $fnStatus
 ];
 
 foreach ($rawSteps as $id => $stepInfo) {

@@ -53,11 +53,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $conn->prepare(
                 "UPDATE applications
                     SET final_status = ?, final_reason = ?, application_status = ?
-                  WHERE id = ?
+                WHERE id = ?
                     AND boss_status    = 'approved'
                     AND file_status    = 'approved'
                     AND clerk_status   = 'approved'
-                    AND branch_status  = 'approved'
                     AND final_status   = 'pending'"
             );
             $stmt->bind_param('sssi', $finalStatus, $finalReason, $applicationStatus, $id);
@@ -189,7 +188,6 @@ $sql = "SELECT a.id,
          WHERE a.boss_status    = 'approved'
            AND a.file_status    = 'approved'
            AND a.clerk_status   = 'approved'
-           AND a.branch_status  = 'approved'
            AND a.final_status   = 'pending'
            AND a.application_status NOT IN ('rejected','returned_to_boss','returned_to_file')";
 
