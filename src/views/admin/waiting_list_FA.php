@@ -18,8 +18,6 @@ $userData = [
 
 $waitingListsData = [
     'general' => [
-        ['nic' => '199812345678', 'compNo' => '101', 'name' => 'A. B. Perera', 'desig' => 'Clerk', 'workplace' => 'Colombo Fort', 'allocDate' => '2026-01-10', 'houseType' => 'None', 'other' => 'None'],
-        ['nic' => '199812345648', 'compNo' => '102', 'name' => 'A. B. Perera', 'desig' => 'Clerk', 'workplace' => 'Colombo Fort', 'allocDate' => '2026-01-10', 'houseType' => 'None', 'other' => 'None']
     ],
     'guard' => [
         ['nic' => '199287654321', 'compNo' => '102', 'name' => 'S. K. Silva', 'desig' => 'Train Guard', 'workplace' => 'Maradana', 'allocDate' => '2026-02-14', 'houseType' => 'Pending', 'other' => 'None']
@@ -38,8 +36,39 @@ $waitingListsData = [
 // Handle Search Filter matching SC style
 $searchQuery = trim($_GET['search'] ?? '');
 
+$conn = getDBConnection();
+$generalSql = "SELECT wl.nic,
+                      u.computer_number AS compNo,
+                      u.name,
+                      COALESCE(u.applicant_designation, '') AS desig,
+                      COALESCE(u.applicant_current_work_station, '') AS workplace,
+                      wl.applied_date AS allocDate,
+                      wl.quarter_type AS houseType,
+                      'None' AS other
+                 FROM waiting_list AS wl
+           INNER JOIN users AS u ON u.nic = wl.nic
+           INNER JOIN applications AS a
+                   ON a.nic = wl.nic
+                  AND a.quarter_type = wl.quarter_type
+                  AND a.waiting_list_no = wl.position
+                  AND a.final_status = 'approved'
+                  AND a.application_status = 'approved'";
+if ($searchQuery !== '') {
+    $generalSql .= " WHERE wl.nic LIKE ? OR u.name LIKE ?";
+    $generalStmt = $conn->prepare($generalSql . ' ORDER BY wl.applied_date ASC, wl.employee_marks DESC, wl.id ASC');
+    $searchTerm = '%' . $searchQuery . '%';
+    $generalStmt->bind_param('ss', $searchTerm, $searchTerm);
+} else {
+    $generalStmt = $conn->prepare($generalSql . ' ORDER BY wl.applied_date ASC, wl.employee_marks DESC, wl.id ASC');
+}
+$generalStmt->execute();
+$waitingListsData['general'] = $generalStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$generalStmt->close();
+$conn->close();
+
 if (!empty($searchQuery)) {
-    foreach ($waitingListsData as $key => $list) {
+    foreach (array_diff(array_keys($waitingListsData), ['general']) as $key) {
+        $list = $waitingListsData[$key];
         $waitingListsData[$key] = array_filter($list, function($item) use ($searchQuery) {
             return stripos($item['nic'], $searchQuery) !== false || 
                    stripos($item['name'], $searchQuery) !== false;
@@ -468,7 +497,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                     <th>Applicant's Name</th>
                     <th>Designation</th>
                     <th>Workplace</th>
-                    <th>Allocated Date</th>
+                    <th>Waiting List Date</th>
                     <th>Allocated House Type</th>
                     <th>Other</th>
                 </tr>

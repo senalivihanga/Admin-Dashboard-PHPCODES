@@ -708,25 +708,6 @@ class ApplicationController {
             $stmt->execute();
             $stmt->close();
 
-            if (!$isResubmit) {
-                // Brand-new application → add to waiting list
-                $positionStmt = $conn->prepare("SELECT COUNT(*) + 1 AS next_position FROM waiting_list WHERE quarter_type = ?");
-                $positionStmt->bind_param("s", $quarterType);
-                $positionStmt->execute();
-                $waitingListNo = (int)$positionStmt->get_result()->fetch_assoc()['next_position'];
-                $positionStmt->close();
-
-                $waitingStmt = $conn->prepare("INSERT INTO waiting_list (nic, position, quarter_type, applied_date) VALUES (?, ?, ?, CURDATE())");
-                $waitingStmt->bind_param("sis", $nic, $waitingListNo, $quarterType);
-                $waitingStmt->execute();
-                $waitingStmt->close();
-
-                $applicationListStmt = $conn->prepare("UPDATE applications SET waiting_list_no = ? WHERE id = ?");
-                $applicationListStmt->bind_param("ii", $waitingListNo, $applicationId);
-                $applicationListStmt->execute();
-                $applicationListStmt->close();
-            }
-
             // 8. Rented house details
             if ($isRenting) {
                 $rentSql = "INSERT INTO rented_house_details (

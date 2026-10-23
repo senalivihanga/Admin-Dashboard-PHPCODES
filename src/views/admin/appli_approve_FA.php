@@ -46,43 +46,126 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Approve → application fully approved. Reject → rejected.
         $applicationStatus = $action === 'approve' ? 'approved' : 'rejected';
 
-        $stmt = $conn->prepare(
-            "UPDATE applications
-                SET final_status = ?, final_reason = ?, application_status = ?
-              WHERE id = ?
-                AND boss_status   = 'approved'
-                AND file_status   = 'approved'
-                AND clerk_status  = 'approved'
-                AND final_status  = 'pending'"
-        );
-        $stmt->bind_param('sssi', $finalStatus, $finalReason, $applicationStatus, $id);
-        $stmt->execute();
+        $conn->begin_transaction();
+        try {
+            $stmt = $conn->prepare(
+                "UPDATE applications
+                    SET final_status = ?, final_reason = ?, application_status = ?
+                  WHERE id = ?
+                    AND boss_status   = 'approved'
+                    AND file_status   = 'approved'
+                    AND clerk_status  = 'approved'
+                    AND final_status  = 'pending'"
+            );
+            $stmt->bind_param('sssi', $finalStatus, $finalReason, $applicationStatus, $id);
+            $stmt->execute();
+            $wasFinalized = $stmt->affected_rows === 1;
+            $stmt->close();
 
-        if ($stmt->affected_rows === 1) {
+            if ($wasFinalized && $action === 'approve') {
+                $applicationStmt = $conn->prepare(
+                    "SELECT nic, quarter_type, waiting_list_no, COALESCE(marks, 0) AS marks
+                       FROM applications
+                      WHERE id = ?"
+                );
+                $applicationStmt->bind_param('i', $id);
+                $applicationStmt->execute();
+                $application = $applicationStmt->get_result()->fetch_assoc();
+                $applicationStmt->close();
+
+                if (!$application) {
+                    throw new RuntimeException('The approved application could not be loaded for waiting-list placement.');
+                }
+
+                $waitingListNo = (int)($application['waiting_list_no'] ?? 0);
+                $existingWaitingStmt = null;
+                if ($waitingListNo > 0) {
+                    $existingWaitingStmt = $conn->prepare(
+                        "SELECT id FROM waiting_list
+                          WHERE nic = ? AND quarter_type = ? AND position = ?
+                          LIMIT 1"
+                    );
+                    $existingWaitingStmt->bind_param(
+                        'ssi',
+                        $application['nic'],
+                        $application['quarter_type'],
+                        $waitingListNo
+                    );
+                    $existingWaitingStmt->execute();
+                    $alreadyListed = $existingWaitingStmt->get_result()->num_rows > 0;
+                    $existingWaitingStmt->close();
+                } else {
+                    $alreadyListed = false;
+                }
+
+                if (!$alreadyListed) {
+                    $positionStmt = $conn->prepare(
+                        "SELECT COALESCE(MAX(position), 0) + 1 AS next_position
+                           FROM waiting_list
+                          WHERE quarter_type = ?"
+                    );
+                    $positionStmt->bind_param('s', $application['quarter_type']);
+                    $positionStmt->execute();
+                    $waitingListNo = (int)$positionStmt->get_result()->fetch_assoc()['next_position'];
+                    $positionStmt->close();
+
+                    $waitingStmt = $conn->prepare(
+                        "INSERT INTO waiting_list
+                            (nic, position, quarter_type, applied_date, employee_marks)
+                         VALUES (?, ?, ?, CURDATE(), ?)"
+                    );
+                    $marks = (int)$application['marks'];
+                    $waitingStmt->bind_param(
+                        'sisi',
+                        $application['nic'],
+                        $waitingListNo,
+                        $application['quarter_type'],
+                        $marks
+                    );
+                    $waitingStmt->execute();
+                    $waitingStmt->close();
+
+                    $applicationListStmt = $conn->prepare(
+                        "UPDATE applications SET waiting_list_no = ? WHERE id = ?"
+                    );
+                    $applicationListStmt->bind_param('ii', $waitingListNo, $id);
+                    $applicationListStmt->execute();
+                    $applicationListStmt->close();
+                }
+            }
+
+            if ($wasFinalized) {
+                // Notify the applicant
+                $notifTitle = $action === 'approve' ? 'Application Approved' : 'Application Rejected';
+                $notifMsg   = $action === 'approve'
+                    ? 'Your quarter application has been fully approved by the Final Approver.'
+                    : 'Your application was rejected by the Final Approver. Reason: ' . $reason;
+
+                $notif = $conn->prepare(
+                    "INSERT INTO notifications (nic, title, message, is_read)
+                     SELECT nic, ?, ?, 0
+                     FROM applications WHERE id = ?"
+                );
+                $notif->bind_param('ssi', $notifTitle, $notifMsg, $id);
+                $notif->execute();
+                $notif->close();
+            }
+
+            $conn->commit();
+        } catch (Throwable $error) {
+            $conn->rollback();
+            throw $error;
+        }
+
+        if ($wasFinalized) {
             $alert_msg  = $action === 'approve'
                 ? 'Application approved successfully and finalized.'
                 : 'Application rejected successfully.';
             $alert_type = $action === 'approve' ? 'success' : 'error';
-
-            // Notify the applicant
-            $notifTitle = $action === 'approve' ? 'Application Approved' : 'Application Rejected';
-            $notifMsg   = $action === 'approve'
-                ? 'Your quarter application has been fully approved by the Final Approver.'
-                : 'Your application was rejected by the Final Approver. Reason: ' . $reason;
-
-            $notif = $conn->prepare(
-                "INSERT INTO notifications (nic, title, message, is_read)
-                 SELECT nic, ?, ?, 0
-                 FROM applications WHERE id = ?"
-            );
-            $notif->bind_param('ssi', $notifTitle, $notifMsg, $id);
-            $notif->execute();
-            $notif->close();
         } else {
             $alert_msg  = 'This application is no longer awaiting your decision.';
             $alert_type = 'error';
         }
-        $stmt->close();
     } elseif ($action === 'reject') {
         $alert_msg  = 'A rejection reason is required.';
         $alert_type = 'error';
