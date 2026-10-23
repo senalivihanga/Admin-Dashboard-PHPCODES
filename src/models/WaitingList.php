@@ -50,22 +50,14 @@ class WaitingList {
     }
     
     /**
-     * Get waiting list with calculated positions
+     * Get waiting list with positions.
+     * `position` = the row's own id, so a lower number = earlier in the queue
+     * (oldest applicant first, newest applicant last).
      */
     public function getWaitingListWithPositions() {
-        $sql = "SELECT 
-                    a1.nic,
-                    a1.quarter_type,
-                    a1.applied_date,
-                    a1.employee_marks,
-                    (SELECT COUNT(*) 
-                     FROM waiting_list a2 
-                             WHERE a2.quarter_type = a1.quarter_type AND ((a2.applied_date < a1.applied_date)
-                                OR (a2.applied_date = a1.applied_date AND a2.employee_marks > a1.employee_marks)
-                                OR (a2.applied_date = a1.applied_date AND a2.employee_marks = a1.employee_marks AND a2.id <= a1.id))
-                    ) AS position
-                FROM waiting_list a1 
-                ORDER BY position ASC";
+        $sql = "SELECT nic, quarter_type, applied_date, employee_marks, id AS position
+                FROM waiting_list
+                ORDER BY id ASC";
         $result = $this->conn->query($sql);
         return $result->fetch_all(MYSQLI_ASSOC);
     }

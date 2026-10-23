@@ -27,10 +27,6 @@ class ApplicationController {
         $result = $this->applicationModel->create($nic, $quarterType);
         
         if ($result['success']) {
-            // Add to waiting list
-            $position = $this->getNextWaitingListPosition($quarterType);
-            $this->waitingListModel->add($nic, $quarterType, $position);
-            
             // Create notification
             $this->notificationModel->create(
                 $nic,
@@ -64,26 +60,12 @@ class ApplicationController {
         }
         
         if ($application) {
-            $position = $this->waitingListModel->getPosition($nic, $application['quarter_type']);
+            $position = $this->waitingListModel->getPosition($nic);
             $application['position'] = $position;
             return $application;
         }
         
         return null;
-    }
-    
-    /**
-     * Get next waiting list position
-     */
-    private function getNextWaitingListPosition($quarterType) {
-        $conn = getDBConnection();
-        $stmt = $conn->prepare("SELECT COUNT(*) AS count FROM waiting_list WHERE quarter_type = ?");
-        $stmt->bind_param("s", $quarterType);
-        $stmt->execute();
-        $row = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
-        $conn->close();
-        return ($row['count'] ?? 0) + 1;
     }
 
     /**

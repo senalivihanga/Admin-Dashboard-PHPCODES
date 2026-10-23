@@ -8,6 +8,7 @@
  *   - boss_status       = 'approved'   (Immediate Boss approved)
  *   - file_status       = 'approved'   (Personal File approved)
  *   - clerk_status      = 'approved'   (Subject Clerk approved)
+ *   - branch_status     = 'approved'   (Branch Officer approved)
  *   - final_status      = 'pending'    (Final Approver has NOT decided yet)
  */
 require_once __DIR__ . '/../../../config/config.php';
@@ -48,14 +49,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $conn->begin_transaction();
         try {
+            // (c) Final Approver can only act once Branch Officer has approved too
             $stmt = $conn->prepare(
                 "UPDATE applications
                     SET final_status = ?, final_reason = ?, application_status = ?
                   WHERE id = ?
-                    AND boss_status   = 'approved'
-                    AND file_status   = 'approved'
-                    AND clerk_status  = 'approved'
-                    AND final_status  = 'pending'"
+                    AND boss_status    = 'approved'
+                    AND file_status    = 'approved'
+                    AND clerk_status   = 'approved'
+                    AND branch_status  = 'approved'
+                    AND final_status   = 'pending'"
             );
             $stmt->bind_param('sssi', $finalStatus, $finalReason, $applicationStatus, $id);
             $stmt->execute();
@@ -78,33 +81,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $waitingListNo = (int)($application['waiting_list_no'] ?? 0);
-                $existingWaitingStmt = null;
+                $alreadyListed = false;
+
                 if ($waitingListNo > 0) {
+                    // (b) Only check nic + position, since position is now global
                     $existingWaitingStmt = $conn->prepare(
                         "SELECT id FROM waiting_list
-                          WHERE nic = ? AND quarter_type = ? AND position = ?
+                          WHERE nic = ? AND position = ?
                           LIMIT 1"
                     );
-                    $existingWaitingStmt->bind_param(
-                        'ssi',
-                        $application['nic'],
-                        $application['quarter_type'],
-                        $waitingListNo
-                    );
+                    $existingWaitingStmt->bind_param('si', $application['nic'], $waitingListNo);
                     $existingWaitingStmt->execute();
                     $alreadyListed = $existingWaitingStmt->get_result()->num_rows > 0;
                     $existingWaitingStmt->close();
-                } else {
-                    $alreadyListed = false;
                 }
 
                 if (!$alreadyListed) {
+                    // (a) Global MAX(position) — one queue for the whole system
                     $positionStmt = $conn->prepare(
                         "SELECT COALESCE(MAX(position), 0) + 1 AS next_position
-                           FROM waiting_list
-                          WHERE quarter_type = ?"
+                           FROM waiting_list"
                     );
-                    $positionStmt->bind_param('s', $application['quarter_type']);
                     $positionStmt->execute();
                     $waitingListNo = (int)$positionStmt->get_result()->fetch_assoc()['next_position'];
                     $positionStmt->close();
@@ -136,10 +133,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($wasFinalized) {
                 // Notify the applicant
-                $notifTitle = $action === 'approve' ? 'Application Approved' : 'Application Rejected';
-                $notifMsg   = $action === 'approve'
-                    ? 'Your quarter application has been fully approved by the Final Approver.'
-                    : 'Your application was rejected by the Final Approver. Reason: ' . $reason;
+                if ($action === 'approve') {
+                    $notifTitle = 'Application Approved';
+                    $notifMsg   = 'Your quarter application has been fully approved by the Final Approver. '
+                                . 'You have been added to the waiting list at position ' . (int)$waitingListNo . '.';
+                } else {
+                    $notifTitle = 'Application Rejected';
+                    $notifMsg   = 'Your application was rejected by the Final Approver. Reason: ' . $reason;
+                }
 
                 $notif = $conn->prepare(
                     "INSERT INTO notifications (nic, title, message, is_read)
@@ -163,7 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 : 'Application rejected successfully.';
             $alert_type = $action === 'approve' ? 'success' : 'error';
         } else {
-            $alert_msg  = 'This application is no longer awaiting your decision.';
+            $alert_msg  = 'This application is no longer awaiting your decision (or the Branch Officer has not approved it yet).';
             $alert_type = 'error';
         }
     } elseif ($action === 'reject') {
@@ -185,10 +186,11 @@ $sql = "SELECT a.id,
                COALESCE(u.applicant_designation, '') AS desig
           FROM applications AS a
     INNER JOIN users        AS u ON u.nic = a.nic
-         WHERE a.boss_status   = 'approved'
-           AND a.file_status   = 'approved'
-           AND a.clerk_status  = 'approved'
-           AND a.final_status  = 'pending'
+         WHERE a.boss_status    = 'approved'
+           AND a.file_status    = 'approved'
+           AND a.clerk_status   = 'approved'
+           AND a.branch_status  = 'approved'
+           AND a.final_status   = 'pending'
            AND a.application_status NOT IN ('rejected','returned_to_boss','returned_to_file')";
 
 if ($searchQuery !== '') {

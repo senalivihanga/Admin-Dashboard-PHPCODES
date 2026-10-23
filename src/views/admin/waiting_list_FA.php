@@ -55,11 +55,11 @@ $generalSql = "SELECT wl.nic,
                   AND a.application_status = 'approved'";
 if ($searchQuery !== '') {
     $generalSql .= " WHERE wl.nic LIKE ? OR u.name LIKE ?";
-    $generalStmt = $conn->prepare($generalSql . ' ORDER BY wl.applied_date ASC, wl.employee_marks DESC, wl.id ASC');
+    $generalStmt = $conn->prepare($generalSql . ' ORDER BY wl.id ASC');
     $searchTerm = '%' . $searchQuery . '%';
     $generalStmt->bind_param('ss', $searchTerm, $searchTerm);
 } else {
-    $generalStmt = $conn->prepare($generalSql . ' ORDER BY wl.applied_date ASC, wl.employee_marks DESC, wl.id ASC');
+    $generalStmt = $conn->prepare($generalSql . ' ORDER BY wl.id ASC');
 }
 $generalStmt->execute();
 $waitingListsData['general'] = $generalStmt->get_result()->fetch_all(MYSQLI_ASSOC);

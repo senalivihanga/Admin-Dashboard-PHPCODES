@@ -57,12 +57,12 @@ if ($searchQuery !== '') {
     $sql .= " WHERE (wl.nic LIKE ? OR u.name LIKE ?)";
     $searchTerm = '%' . $searchQuery . '%';
     $stmt = $conn->prepare(
-        $sql . ' ORDER BY wl.applied_date ASC, wl.employee_marks DESC, wl.id ASC'
+        $sql . ' ORDER BY wl.id ASC'
     );
     $stmt->bind_param('ss', $searchTerm, $searchTerm);
 } else {
     $stmt = $conn->prepare(
-        $sql . ' ORDER BY wl.applied_date ASC, wl.employee_marks DESC, wl.id ASC'
+        $sql . ' ORDER BY wl.id ASC'
     );
 }
 

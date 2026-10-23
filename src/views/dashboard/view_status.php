@@ -18,7 +18,11 @@ $userName = $user['name'] ?? 'User';
 $pageTitle = 'View Status';
 
 // Fetch waiting list position and marks from application data
-$waitingListPosition = $application['position'] ?? 'N/A';
+// Prefer the number the Final Approver saved on the application row.
+// Fall back to the waiting_list position join if that column is empty.
+$waitingListPosition = !empty($application['waiting_list_no'])
+    ? $application['waiting_list_no']
+    : ($application['position'] ?? 'N/A');
 $marks = $application['marks'] ?? '0';
 
 // Define the approval steps with darker/stronger success color themes (thada pata)
