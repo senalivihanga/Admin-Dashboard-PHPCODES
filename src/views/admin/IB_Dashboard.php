@@ -55,13 +55,24 @@ $rejectedStmt = $conn->query(
 $rejectedCount = (int)($rejectedStmt->fetch_assoc()['total'] ?? 0);
 $rejectedStmt->close();
 
+// Personal File Rejected List = applications returned from PF to the IB for review
+$pfRejectedStmt = $conn->query(
+    "SELECT COUNT(*) AS total
+     FROM applications
+     WHERE application_status = 'returned_to_boss'
+       AND file_status = 'rejected'"
+);
+$pfRejectedCount = (int)($pfRejectedStmt->fetch_assoc()['total'] ?? 0);
+$pfRejectedStmt->close();
+
 $conn->close();
 
 $dashboardStats = [
-    'total_approvals' => $totalApprovals,
-    'pending_list'    => $pendingCount,
-    'approved_list'   => $approvedCount,
-    'rejected_list'   => $rejectedCount
+    'total_approvals'    => $totalApprovals,
+    'pending_list'       => $pendingCount,
+    'approved_list'      => $approvedCount,
+    'rejected_list'      => $rejectedCount,
+    'pf_rejected_list'   => $pfRejectedCount
 ];
 
 $userData = [
@@ -184,14 +195,14 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     .row {
         display: flex;
         justify-content: center;
-        gap: 15px;
+        gap: 12px;
         width: 100%;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
     }
 
     .stat-card {
         background: #ffffff;
-        padding: 16px 20px;
+        padding: 14px 12px;
         border-radius: 12px;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04);
         border: 1px solid #e2e8f0;
@@ -203,7 +214,8 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         transition: all 0.25s ease;
         text-decoration: none;
         cursor: pointer;
-        width: 265px;
+        flex: 1 1 0;
+        min-width: 0;
         box-sizing: border-box;
     }
 
@@ -220,18 +232,20 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     }
 
     .stat-card h3 {
-        font-size: 0.85rem;
+        font-size: 0.72rem;
         color: #64748b;
-        margin: 0 0 5px 0;
+        margin: 0 0 4px 0;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.3px;
+        white-space: nowrap;
     }
 
     .stat-count {
-        font-size: 1.9rem;
+        font-size: 1.6rem;
         font-weight: 700;
         color: #1e293b;
+        line-height: 1.2;
     }
 
     .section-title {
@@ -371,14 +385,27 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         cursor: pointer;
     }
 
-    @media (max-width: 768px) {
+    @media (max-width: 900px) {
         .dashboard-container {
             margin: 15px auto;
             padding: 0 12px;
         }
-        .stat-card, .manage-tile {
+        .row {
+            flex-wrap: wrap;
+        }
+        .stat-card {
+            flex: 1 1 calc(50% - 12px);
+            min-width: 140px;
+        }
+        .manage-tile {
             width: 100%;
             max-width: 100%;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .stat-card {
+            flex: 1 1 100%;
         }
     }
 </style>
@@ -405,11 +432,17 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                 <div class="stat-count"><?php echo str_pad($dashboardStats['approved_list'], 2, '0', STR_PAD_LEFT); ?></div>
             </div>
 
-            <div class="stat-card" onclick="location.href='approve_reject_list_IB.php?tab=rejected'">
+                <div class="stat-card" onclick="location.href='approve_reject_list_IB.php?tab=rejected'">
                 <i class="fa-solid fa-ban"></i>
                 <h3>Rejected List</h3>
                 <div class="stat-count"><?php echo str_pad($dashboardStats['rejected_list'], 2, '0', STR_PAD_LEFT); ?></div>
             </div>
+
+            <a href="returned_list_IB.php" class="stat-card">
+                <i class="fa-solid fa-file-circle-xmark"></i>
+                <h3>PF Rejected List</h3>
+                <div class="stat-count"><?php echo str_pad($dashboardStats['pf_rejected_list'], 2, '0', STR_PAD_LEFT); ?></div>
+            </a>
         </div>
 
         <div class="section-title">Application Management Modules</div>
@@ -433,13 +466,22 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                 <span class="tile-link-text">View Records <i class="fa-solid fa-arrow-right"></i></span>
             </a>
 
-            <a href="resubmitted_list_IB.php" class="manage-tile">
+                        <a href="resubmitted_list_IB.php" class="manage-tile">
                 <div class="manage-tile-header">
                     <h4>Resubmitted List</h4>
                     <i class="fa-solid fa-rotate-right" style="color: #0284c7;"></i>
                 </div>
                 <p>Review applications that were resubmitted by staff following previous rejections and feedback.</p>
                 <span class="tile-link-text">Open Resubmitted Queue <i class="fa-solid fa-arrow-right"></i></span>
+            </a>
+
+            <a href="returned_list_IB.php" class="manage-tile">
+                <div class="manage-tile-header">
+                    <h4>Personal File Rejected List</h4>
+                    <i class="fa-solid fa-file-circle-xmark" style="color: #dc2626;"></i>
+                </div>
+                <p>Applications rejected by the Personal File and sent back to you. Review each one and either send it back to Personal File or reject it to the applicant.</p>
+                <span class="tile-link-text">Review Rejected List <i class="fa-solid fa-arrow-right"></i></span>
             </a>
         </div>
 

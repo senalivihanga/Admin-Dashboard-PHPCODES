@@ -514,7 +514,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                                 <td><?php echo htmlspecialchars($item['computer_no']); ?></td>
                                 <td><?php echo htmlspecialchars($item['name']); ?></td>
                                 <td><?php echo htmlspecialchars($item['applicant_designation'] ?? ''); ?></td>
-                                <td style=\"color:#991b1b;\"><?php echo htmlspecialchars($item['file_reason'] ?? '-'); ?></td>
+                                <td style="color:#991b1b; font-weight: 600;"><?php echo htmlspecialchars($item['file_reason'] ?? '-'); ?></td>
                                 <td>
                                     <div class="action-cell">
                                         <a href="view-application-details.php?id=<?php echo $item['id']; ?>" class="action-btn btn-view" title="View Application"><i class="fa-solid fa-eye"></i></a>
@@ -580,5 +580,5 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 </script>
 
 <?php
-require_once __DIR__ . '/../layouts/admin_header.php';
+require_once __DIR__ . '/../layouts/admin_footer.php';
 ?>

@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 21, 2026 at 11:24 AM
+-- Generation Time: Oct 23, 2026 at 06:14 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS `allocated_quarters` (
   `source` enum('normal','direct') NOT NULL DEFAULT 'normal',
   PRIMARY KEY (`id`),
   KEY `nic` (`nic`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS `applications` (
   KEY `idx_applications_nic` (`nic`),
   KEY `idx_applications_status` (`application_status`),
   KEY `idx_applications_quarter_type` (`quarter_type`)
-) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS `children_details` (
   `child_civil_status` enum('married','unmarried','divorced','widowed') NOT NULL,
   PRIMARY KEY (`id`),
   KEY `fk_children_app` (`application_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=22 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=23 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -178,7 +178,7 @@ CREATE TABLE IF NOT EXISTS `complaints` (
   PRIMARY KEY (`id`),
   KEY `idx_complaints_user` (`user_id`),
   KEY `idx_complaints_status` (`status`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -196,7 +196,7 @@ CREATE TABLE IF NOT EXISTS `declaration_details` (
   `declaration_date` date NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_declaration_app` (`application_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=20 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -255,7 +255,7 @@ CREATE TABLE IF NOT EXISTS `disability_medical_details` (
   `medical_certificate_file_path` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_disability_app` (`application_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -347,7 +347,7 @@ CREATE TABLE IF NOT EXISTS `login_attempts` (
   PRIMARY KEY (`id`),
   KEY `idx_nic_time` (`nic`,`attempt_time`),
   KEY `idx_ip_time` (`ip_address`,`attempt_time`)
-) ENGINE=InnoDB AUTO_INCREMENT=123 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=159 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -387,7 +387,7 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `nic` (`nic`)
-) ENGINE=InnoDB AUTO_INCREMENT=32 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=40 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -426,7 +426,7 @@ CREATE TABLE IF NOT EXISTS `permanent_residence_details` (
   `distance_from_branch_post_to_work_km` decimal(6,1) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_residence_app` (`application_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=20 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -478,7 +478,17 @@ CREATE TABLE IF NOT EXISTS `previous_quarter_details` (
   `previous_applied_quarter_location` varchar(100) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_prevquarters_app` (`application_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=20 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `previous_quarter_details`
+--
+
+INSERT INTO `previous_quarter_details` (`id`, `application_id`, `previous_quarter_number`, `previous_quarter_vacated_date`, `previous_quarter_vacate_reason`, `has_applicant_rejected_quarter_before`, `rejected_quarter_details`, `has_applicant_applied_for_quarter_before`, `previous_application_date`, `previous_applied_quarter_type`, `previous_applied_quarter_location`) VALUES
+(15, 17, 'gfer33t5t6', '2026-10-01', 'fghrtgfr', 1, NULL, 1, '2026-10-10', 'Single', 'Maradana'),
+(17, 18, 'hygrtr', '2026-10-03', 'gtger', 0, NULL, 0, NULL, NULL, NULL),
+(18, 19, '21', '2026-10-24', 'admakmddada', 0, NULL, 0, NULL, NULL, NULL),
+(19, 20, '121', '2026-09-30', 'ABVC', 0, NULL, 0, NULL, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -514,8 +524,8 @@ CREATE TABLE IF NOT EXISTS `quarters` (
 --
 
 INSERT INTO `quarters` (`id`, `quarter_number`, `quarter_name`, `location_name`, `quarter_address`, `quarter_type`, `quarter_division`, `quarter_ownership`, `quarter_area`, `quarter_assessment_rent`, `is_active`, `quarter_status`, `has_electricity`, `has_water`, `sort_order`, `created_at`) VALUES
-(1, 'A-10156', 'Bungalows - A-101', 'Colombo Fort', 'Colombo Fort, Sri Lanka', 'Bungalows', 'Way & Works test', 'Railway Department', '800 sq.ft', 3500.00, 1, 'Available', 1, 1, 1, '2026-10-12 06:38:41'),
-(2, 'B-205', 'Flats - B-205', 'Maradana', 'Maradana, Sri Lanka', 'Flats', 'Way & Works', 'Railway Department', '800 sq.ft', 3500.00, 1, 'Available', 1, 1, 2, '2026-10-12 06:38:41'),
+(1, 'A-10156', 'Bungalows - A-101', 'Colombo Fort', 'Colombo Fort, Sri Lanka', 'Bungalows', 'Way & Works test', 'Railway Department', '800 sq.ft', 3500.00, 1, 'Occupied', 1, 1, 1, '2026-10-12 06:38:41'),
+(2, 'B-205', 'Flats - B-205', 'Maradana', 'Maradana, Sri Lanka', 'Flats', 'Way & Works', 'Railway Department', '800 sq.ft', 3500.00, 1, 'Occupied', 1, 1, 2, '2026-10-12 06:38:41'),
 (3, 'K-014', 'Double - K-014', 'Kandy', 'Kandy, Sri Lanka', 'Double', 'Way & Works', 'Railway Department', '800 sq.ft', 3500.00, 1, 'Occupied', 1, 1, 3, '2026-10-12 06:38:41'),
 (4, 'G-022', 'Single - G-022', 'Galle', 'Galle, Sri Lanka', 'Single', 'Way & Works', 'Railway Department', '800 sq.ft', 3500.00, 1, 'Available', 1, 1, 4, '2026-10-12 06:38:41'),
 (5, 'AP-007', 'Row - AP-007', 'Anuradhapura', 'Anuradhapura, Sri Lanka', 'Row', 'Way & Works', 'Railway Department', '800 sq.ft', 3500.00, 1, 'Available', 1, 1, 5, '2026-10-12 06:38:41');
@@ -638,7 +648,7 @@ CREATE TABLE IF NOT EXISTS `rented_house_details` (
   `rented_house_monthly_rent` decimal(12,2) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_rented_app` (`application_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -673,17 +683,6 @@ CREATE TABLE IF NOT EXISTS `salary_account_branches` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_branch_name` (`branch_name`)
 ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `salary_account_branches`
---
-
-INSERT INTO `salary_account_branches` (`id`, `branch_name`, `branch_name_si`, `is_active`, `sort_order`, `created_at`) VALUES
-(1, 'Bank of Ceylon - Colombo Fort', 'ලංකා බැංකුව - කොළඹ කොටුව', 1, 1, '2026-10-12 06:38:41'),
-(2, 'People\'s Bank - Maradana', 'මහජන බැංකුව - මරදාන', 1, 2, '2026-10-12 06:38:41'),
-(3, 'Bank of Ceylon - Kandy City', 'ලංකා බැංකුව - මහනුවර නගර', 1, 3, '2026-10-12 06:38:41'),
-(4, 'People\'s Bank - Galle', 'මහජන බැංකුව - ගාල්ල', 1, 4, '2026-10-12 06:38:41'),
-(5, 'Bank of Ceylon - Anuradhapura', 'ලංකා බැංකුව - අනුරාධපුර', 1, 5, '2026-10-12 06:38:41');
 
 -- --------------------------------------------------------
 
@@ -724,7 +723,7 @@ CREATE TABLE IF NOT EXISTS `spouse_details` (
   `spouse_annual_salary` decimal(12,2) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_spouse_app` (`application_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -835,10 +834,11 @@ INSERT INTO `users` (`nic`, `name`, `email`, `password`, `computer_number`, `mob
 ('12345678923', 'Test1', 'test1@gmail.com', '$2y$12$kuzeIYGdBgkQphtFzyV1quiCEHnB0mZ5fiTDF46IGxCDF37BbmjYW', '12345678923', '0786366786', 1, '2026-10-21 09:11:28', '2026-10-21 09:18:51', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, 'applicant', 2),
 ('19984561901', 'Test3', 'test3@gmail.com', '$2y$12$TGxzBb/2GAvEU97catvZqudcW7OiD.zDHzeYesKEdxmxDbzZJhbAu', '19984561901', '0798345672', 1, '2026-10-21 09:14:09', '2026-10-21 09:20:03', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, 'applicant', 4),
 ('19986772392', 'Test5', 'test5@gmail.com', '$2y$12$Aw9Wr.luJOsZ4kVm4xzPUeAlwuvXeeoEvwySuFx383G.hiGmoZnf.', '19986772392', '0731234567', 1, '2026-10-21 09:16:37', '2026-10-21 09:20:56', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, 'applicant', 6),
-('20016248921', 'Test2', 'test2@gmail.com', '$2y$12$/2/Y05ko1LTShdK1IJCPIOtebmYW8TYDQCMW5jX2n8uo39vEsRYK.', '20016248921', '0768234533', 1, '2026-10-21 09:12:52', '2026-10-21 09:19:39', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, 'applicant', 3),
+('20016248921', 'Test2', 'test2@gmail.com', '$2y$12$/2/Y05ko1LTShdK1IJCPIOtebmYW8TYDQCMW5jX2n8uo39vEsRYK.', '001', '0768234533', 1, '2026-10-21 09:12:52', '2026-10-22 05:39:11', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, 'applicant', 3),
 ('20016248922', 'Test6', 'Test6@gmail.com', '$2y$12$BmJNMKRksXzVN88/9fRfIOgJrXAHZy1na2/Vutym2.JX0vXcejn5S', '20016248922', '0751234567', 1, '2026-10-21 09:17:59', '2026-10-21 09:21:19', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, 'applicant', 7),
 ('20026279201', 'Test4', 'test4@gmail.com', '$2y$12$wkaG/NmbusAO74iQkuYYOeTikRMnXdFqwJtdsFYcCgaToMikv9rrW', '20026279201', '0721234567', 1, '2026-10-21 09:15:15', '2026-10-21 09:20:21', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, 'applicant', 5),
-('200329012186', 'Gayan Pradeep Jayawardhana', 'gpj@gmail.com', '$2y$12$P8vTzS378rFe9U7viq4wqOomGTvZDpzdFVfhkSnXuocahZU/BAdGq', '200329012186', '0768102133', 1, '2026-10-21 09:22:48', '2026-10-21 09:22:48', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, 'applicant', 1);
+('200329012186', 'Gayan Pradeep Jayawardhana', 'gpj@gmail.com', '$2y$12$q/hVhReV6lY09u8hnaEquuJTJiwgb232JrybOxGY7iipKIc1atfuy', '200329012186', '0768102144', 1, '2026-10-22 08:03:46', '2026-10-22 08:11:23', 'G.P.Jayawardhana', 'Maradana Station', 'srfrg436445', '444578', '2026-10-10', '10/1,Henyaya,MEddepola,Giriulla', 'No.141,Pelpola,Paragasthota', 'Unmarried', 'Engineer', 'Commercial', 'Bank of Ceylon - Colombo Fort', 'Divisional Office - Colombo', 0, NULL, '2026-10-01', '2026-10-05', '2026-10-08', '2026-10-09', 'applicant', 1),
+('200358813470', 'Kamal Perera', 'kamal@gmail.com', '$2y$12$p2qbkhk6RwRGSjorsEMKSOa2oRA0AT.xP9NQwDkdpFJG.2QIcN0o2', '1234', '0771123456', 1, '2026-10-22 05:19:09', '2026-10-22 07:00:39', 'aklsndlandlandljandlnad', 'Galle Station', '2176313123', '2768', '2026-10-23', 'annsjdnaljdna', 'ioioiooioioioiooioio', 'Married', 'Station Master', 'Accounts', 'Bank of Ceylon - Colombo Fort', 'Divisional Office - Kandy', 0, NULL, '2026-10-23', '2026-10-24', '2026-10-25', '2026-10-27', 'applicant', 1);
 
 -- --------------------------------------------------------
 
@@ -858,7 +858,7 @@ CREATE TABLE IF NOT EXISTS `waiting_list` (
   `employee_marks` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `nic` (`nic`)
-) ENGINE=InnoDB AUTO_INCREMENT=16 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
