@@ -1,6 +1,9 @@
 <?php
 /**
  * Available Quarters - Sri Lanka Railways Admin
+ *
+ * Shows ONLY quarters with quarter_status = 'Available' and is_active = 1,
+ * fetched live from the `quarters` table.
  */
 require_once __DIR__ . '/../../../config/config.php';
 
@@ -11,48 +14,54 @@ if (session_status() === PHP_SESSION_NONE) {
 $pageTitle = "Available Quarters - Sri Lanka Railways Admin";
 
 $userData = [
-    'name' => 'Subject Clerk',
-    'role' => 'Sri Lanka Railways - AOT',
+    'name'     => 'Subject Clerk',
+    'role'     => 'Sri Lanka Railways - AOT',
     'initials' => 'SC'
 ];
 
-$availableQuartersData = [
-    [
-        'quarterNo' => 'Q-01',
-        'location' => 'Colombo',
-        'quarterName' => 'Bungalow A',
-        'address' => 'No. 12, Railway Avenue, Colombo 10',
-        'quarterType' => 'Bungalows',
-        'assessmentRent' => '5500.00',
-        'status' => 'Under Maintenance',
-        'statusColor' => '#d97706',
-        'electric' => true,
-        'water' => true
-    ],
-    [
-        'quarterNo' => 'Q-02',
-        'location' => 'Maradana',
-        'quarterName' => 'Quarters B',
-        'address' => 'No. 45, Station Road, Maradana',
-        'quarterType' => 'Grade III',
-        'assessmentRent' => '3500.00',
-        'status' => 'Available',
-        'statusColor' => '#16a34a',
-        'electric' => true,
-        'water' => false
-    ]
-];
-
-// Handle Search Filter matching appli_approve_IB style[cite: 23, 24]
 $searchQuery = trim($_GET['search'] ?? '');
-$displayData = $availableQuartersData;
+$displayData = [];
 
-if (!empty($searchQuery)) {
-    $displayData = array_filter($displayData, function($item) use ($searchQuery) {
-        return stripos($item['quarterNo'], $searchQuery) !== false || 
-               stripos($item['location'], $searchQuery) !== false || 
-               stripos($item['quarterName'], $searchQuery) !== false;
-    });
+$conn = getDBConnection();
+
+$sql = "SELECT id,
+               quarter_number,
+               quarter_name,
+               location_name,
+               quarter_address,
+               quarter_type,
+               quarter_assessment_rent,
+               quarter_status,
+               has_electricity,
+               has_water
+        FROM quarters
+        WHERE is_active = 1
+          AND quarter_status = 'Available'";
+
+if ($searchQuery !== '') {
+    $sql .= " AND (quarter_number LIKE ?
+                OR location_name LIKE ?
+                OR quarter_name LIKE ?)";
+    $searchTerm = '%' . $searchQuery . '%';
+    $stmt = $conn->prepare($sql . ' ORDER BY location_name ASC, quarter_number ASC');
+    $stmt->bind_param('sss', $searchTerm, $searchTerm, $searchTerm);
+} else {
+    $stmt = $conn->prepare($sql . ' ORDER BY location_name ASC, quarter_number ASC');
+}
+
+$stmt->execute();
+$displayData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
+
+// Status colours (only 'Available' will ever be shown here)
+function statusColor(string $status): string {
+    return match ($status) {
+        'Available'         => '#16a34a',
+        'Occupied'          => '#1e40af',
+        'Under Maintenance' => '#d97706',
+        default             => '#334155'
+    };
 }
 
 require_once __DIR__ . '/../layouts/admin_header.php';
@@ -77,27 +86,27 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
 
-    .container { 
-        max-width: 1450px; 
-        margin: 20px auto; 
-        padding: 0 20px; 
+    .container {
+        max-width: 1450px;
+        margin: 20px auto;
+        padding: 0 20px;
         width: 100%;
         box-sizing: border-box;
     }
 
-    .back-link { 
-        display: inline-flex; 
-        align-items: center; 
-        gap: 6px; 
-        color: var(--primary-color); 
-        text-decoration: none; 
-        font-weight: 600; 
-        margin-bottom: 20px; 
+    .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--primary-color);
+        text-decoration: none;
+        font-weight: 600;
+        margin-bottom: 20px;
         font-size: 0.85rem;
-        transition: color 0.2s; 
+        transition: color 0.2s;
     }
-    .back-link:hover { 
-        text-decoration: underline; 
+    .back-link:hover {
+        text-decoration: underline;
     }
 
     .user-profile-wrapper {
@@ -161,65 +170,63 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         background: #fee2e2;
     }
 
-    /* Title style matching appli_approve_IB exactly[cite: 21, 23] */
-    .page-title { 
-        text-align: center; 
-        color: var(--primary-color); 
-        font-size: 1.8rem; 
-        margin-bottom: 25px; 
-        text-transform: uppercase; 
-        letter-spacing: 1px; 
-        text-decoration: underline; 
-        text-underline-offset: 6px; 
+    .page-title {
+        text-align: center;
+        color: var(--primary-color);
+        font-size: 1.8rem;
+        margin-bottom: 25px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        text-decoration: underline;
+        text-underline-offset: 6px;
         font-weight: 700;
     }
-    
-    /* Search card matching appli_approve_IB style[cite: 23] */
-    .search-card { 
-        background: var(--card-bg); 
-        padding: 18px 22px; 
-        border-radius: 12px; 
-        box-shadow: 0 4px 15px rgba(0,0,0,0.04); 
-        margin-bottom: 20px; 
-        display: flex; 
-        justify-content: space-between; 
-        align-items: center; 
-        flex-wrap: wrap; 
-        gap: 15px; 
+
+    .search-card {
+        background: var(--card-bg);
+        padding: 18px 22px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.04);
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
         border: 1px solid var(--border-color);
         width: 100%;
         box-sizing: border-box;
     }
 
-    .search-wrapper { 
-        display: flex; 
-        gap: 10px; 
-        align-items: center; 
+    .search-wrapper {
+        display: flex;
+        gap: 10px;
+        align-items: center;
         flex: 1;
         min-width: 280px;
     }
-    
+
     .search-input-container {
         position: relative;
         flex: 1;
         max-width: 350px;
     }
 
-    .search-input { 
+    .search-input {
         width: 100%;
-        padding: 10px 36px 10px 14px; 
-        border-radius: 8px; 
-        border: 1px solid #cbd5e1; 
-        font-size: 0.9rem; 
-        outline: none; 
+        padding: 10px 36px 10px 14px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        font-size: 0.9rem;
+        outline: none;
         box-sizing: border-box;
     }
-    
-    .search-input:focus { 
-        border-color: var(--primary-color); 
-        box-shadow: 0 0 0 3px rgba(122, 28, 28, 0.1); 
+
+    .search-input:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(122, 28, 28, 0.1);
     }
-    
+
     .search-clear-icon {
         position: absolute;
         right: 12px;
@@ -233,53 +240,53 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         justify-content: center;
         transition: color 0.2s;
     }
-    
+
     .search-clear-icon:hover {
         color: var(--text-main);
     }
 
-    .search-btn, .print-btn { 
-        border: none; 
-        padding: 10px 18px; 
-        border-radius: 8px; 
-        font-weight: 600; 
-        cursor: pointer; 
-        display: inline-flex; 
-        align-items: center; 
-        gap: 6px; 
+    .search-btn, .print-btn {
+        border: none;
+        padding: 10px 18px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         font-size: 0.9rem;
-        text-decoration: none; 
-        transition: background 0.2s; 
-    }
-    
-    .search-btn { 
-        background-color: var(--primary-color); 
-        color: white; 
-    }
-    
-    .search-btn:hover { 
-        background-color: var(--primary-dark); 
-    }
-    
-    .print-btn { 
-        background-color: #0284c7; 
-        color: white; 
-    }
-    
-    .print-btn:hover { 
-        background-color: #0369a1; 
+        text-decoration: none;
+        transition: background 0.2s;
     }
 
-    .management-section { 
-        background: var(--card-bg); 
-        padding: 20px; 
-        border-radius: 12px; 
-        box-shadow: 0 8px 20px rgba(0,0,0,0.05); 
-        border-top: 5px solid var(--primary-color); 
-        overflow-x: auto; 
+    .search-btn {
+        background-color: var(--primary-color);
+        color: white;
+    }
+
+    .search-btn:hover {
+        background-color: var(--primary-dark);
+    }
+
+    .print-btn {
+        background-color: #0284c7;
+        color: white;
+    }
+
+    .print-btn:hover {
+        background-color: #0369a1;
+    }
+
+    .management-section {
+        background: var(--card-bg);
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+        border-top: 5px solid var(--primary-color);
+        overflow-x: auto;
         width: 100%;
         box-sizing: border-box;
-        margin-bottom: 40px; 
+        margin-bottom: 40px;
     }
 
     .table-responsive {
@@ -288,35 +295,35 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         -webkit-overflow-scrolling: touch;
     }
 
-    .data-table { 
-        width: 100%; 
-        border-collapse: collapse; 
-        text-align: left; 
-        min-width: 1100px; 
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        min-width: 1100px;
     }
-    .data-table th, .data-table td { 
-        padding: 14px 16px; 
-        border-bottom: 1px solid var(--border-color); 
-        vertical-align: middle; 
-        font-size: 0.9rem; 
-        text-align: center; 
+    .data-table th, .data-table td {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--border-color);
+        vertical-align: middle;
+        font-size: 0.9rem;
+        text-align: center;
     }
-    .data-table th { 
-        background-color: #f8fafc; 
-        color: var(--text-main); 
-        font-weight: 700; 
-        text-transform: uppercase; 
+    .data-table th {
+        background-color: #f8fafc;
+        color: var(--text-main);
+        font-weight: 700;
+        text-transform: uppercase;
         font-size: 0.75rem;
         letter-spacing: 0.5px;
         border-bottom: 2px solid var(--border-color);
     }
-    .data-table td { 
-        color: var(--text-main); 
+    .data-table td {
+        color: var(--text-main);
     }
-    
-    .data-table td:nth-child(4), 
-    .data-table td:nth-child(5) { 
-        text-align: left; 
+
+    .data-table td:nth-child(4),
+    .data-table td:nth-child(5) {
+        text-align: left;
     }
 
     .data-table tr:hover {
@@ -326,7 +333,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     .badge-status {
         font-weight: 600;
     }
-    
+
     .facility-row {
         display: flex;
         align-items: center;
@@ -443,7 +450,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         }
     }
 
-    /* Print / PDF style exactly matching appli-approve-IB[cite: 23] */
     @media print {
         @page {
             size: landscape;
@@ -456,23 +462,23 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             print-color-adjust: exact;
         }
 
-        .back-link, .search-card, .user-profile-wrapper { 
-            display: none !important; 
+        .back-link, .search-card, .user-profile-wrapper {
+            display: none !important;
         }
 
-        .management-section { 
-            box-shadow: none !important; 
-            border: none !important; 
-            padding: 0 !important; 
+        .management-section {
+            box-shadow: none !important;
+            border: none !important;
+            padding: 0 !important;
         }
 
-        .data-table { 
-            width: 100% !important; 
-            font-size: 8.5pt !important; 
+        .data-table {
+            width: 100% !important;
+            font-size: 8.5pt !important;
         }
 
-        .data-table th, .data-table td { 
-            padding: 8px 10px !important; 
+        .data-table th, .data-table td {
+            padding: 8px 10px !important;
         }
 
         .facility-row {
@@ -504,7 +510,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
             <div id="profileDropdown" class="profile-dropdown">
                 <a href="edit_profile.php"><i class="fa-solid fa-user-pen"></i> Edit Profile</a>
-                <a href="assign-quarters-SC.php"><i class="fa-solid fa-arrow-left"></i> Back to Assign Quarters Management</a>
+                <a href="assign_quarters_SC.php"><i class="fa-solid fa-arrow-left"></i> Back to Assign Quarters Management</a>
                 <a href="#" class="logout-btn" onclick="openLogoutModal(event)"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
             </div>
         </div>
@@ -512,11 +518,12 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
     <h2 class="page-title">Available Quarters Portal</h2>
 
-    <!-- Search Card and Print Button matching appli-approve-IB style[cite: 23] -->
     <form method="GET" action="" class="search-card">
         <div class="search-wrapper">
             <div class="search-input-container">
-                <input type="text" name="search" class="search-input" placeholder="Search by Quarter No, Location or Name..." value="<?php echo htmlspecialchars($searchQuery); ?>">
+                <input type="text" name="search" class="search-input"
+                       placeholder="Search by Quarter No, Location or Name..."
+                       value="<?php echo htmlspecialchars($searchQuery); ?>">
                 <?php if (!empty($searchQuery)): ?>
                     <a href="?" class="search-clear-icon" title="Clear Search"><i class="fa-solid fa-xmark"></i></a>
                 <?php endif; ?>
@@ -539,27 +546,37 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                         <th>Quarter Type</th>
                         <th>Assessment Rent (LKR)</th>
                         <th>Status</th>
-                        <th>Facility (Electricity & Water)</th>
+                        <th>Facility (Electricity &amp; Water)</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($displayData)): ?>
-                        <tr><td colspan="9" style="text-align: center; color: #64748b; padding: 30px;">No available quarters found.</td></tr>
+                        <tr>
+                            <td colspan="9" style="text-align: center; color: #64748b; padding: 30px;">
+                                No available quarters found.
+                            </td>
+                        </tr>
                     <?php else: ?>
                         <?php $counter = 1; foreach ($displayData as $row): ?>
+                            <?php
+                                $status = $row['quarter_status'] ?? 'Available';
+                                $statusCol = statusColor($status);
+                                $electric  = !empty($row['has_electricity']);
+                                $water     = !empty($row['has_water']);
+                            ?>
                             <tr>
                                 <td><?php echo $counter++; ?></td>
-                                <td><b><?php echo htmlspecialchars($row['quarterNo']); ?></b></td>
-                                <td><?php echo htmlspecialchars($row['location']); ?></td>
-                                <td><?php echo htmlspecialchars($row['quarterName']); ?></td>
-                                <td><?php echo htmlspecialchars($row['address']); ?></td>
-                                <td><?php echo htmlspecialchars($row['quarterType']); ?></td>
-                                <td><b>Rs. <?php echo htmlspecialchars($row['assessmentRent']); ?></b></td>
-                                <td><span class="badge-status" style="color: <?php echo htmlspecialchars($row['statusColor']); ?>;"><?php echo htmlspecialchars($row['status']); ?></span></td>
+                                <td><b><?php echo htmlspecialchars($row['quarter_number']); ?></b></td>
+                                <td><?php echo htmlspecialchars($row['location_name']); ?></td>
+                                <td><?php echo htmlspecialchars($row['quarter_name'] ?? '-'); ?></td>
+                                <td><?php echo htmlspecialchars($row['quarter_address'] ?? '-'); ?></td>
+                                <td><?php echo htmlspecialchars($row['quarter_type']); ?></td>
+                                <td><b>Rs. <?php echo htmlspecialchars(number_format((float)($row['quarter_assessment_rent'] ?? 0), 2)); ?></b></td>
+                                <td><span class="badge-status" style="color: <?php echo htmlspecialchars($statusCol); ?>;"><?php echo htmlspecialchars($status); ?></span></td>
                                 <td>
                                     <div class="facility-row">
                                         <span class="facility-label">Electricity</span>
-                                        <?php if ($row['electric']): ?>
+                                        <?php if ($electric): ?>
                                             <span class="badge-available" title="Available" aria-label="Available"><i class="fa-solid fa-check" aria-hidden="true"></i></span>
                                         <?php else: ?>
                                             <span class="badge-unavailable" title="Unavailable" aria-label="Unavailable"><i class="fa-solid fa-xmark" aria-hidden="true"></i></span>
@@ -567,7 +584,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                                     </div>
                                     <div class="facility-row">
                                         <span class="facility-label">Water</span>
-                                        <?php if ($row['water']): ?>
+                                        <?php if ($water): ?>
                                             <span class="badge-available" title="Available" aria-label="Available"><i class="fa-solid fa-check" aria-hidden="true"></i></span>
                                         <?php else: ?>
                                             <span class="badge-unavailable" title="Unavailable" aria-label="Unavailable"><i class="fa-solid fa-xmark" aria-hidden="true"></i></span>

@@ -1,6 +1,10 @@
 <?php
 /**
- * Final Approval Approved Application List - Sri Lanka Railways
+ * Final Approval Approved Application List - Sri Lanka Railways (SC view)
+ *
+ * Shows ONLY applications whose FINAL approval has been granted
+ * (final_status = 'approved' AND application_status = 'approved'),
+ * fetched live from the database.
  */
 require_once __DIR__ . '/../../../config/config.php';
 
@@ -11,52 +15,47 @@ if (session_status() === PHP_SESSION_NONE) {
 $pageTitle = "Final Approval Approved Application List - Sri Lanka Railways";
 
 $userData = [
-    'name' => 'Subject Clerk',
-    'role' => 'Sri Lanka Railways - AOT',
+    'name'     => 'Subject Clerk',
+    'role'     => 'Sri Lanka Railways - AOT',
     'initials' => 'SC'
 ];
 
-$finalApprovedData = [
-    [
-        'id' => 1,
-        'appNo' => 'SLR/AOT/2026/0001',
-        'nic' => '981234567V',
-        'compNo' => '1054',
-        'name' => 'A. B. Perera',
-        'desig' => 'Station Master',
-        'status' => 'Approved'
-    ],
-    [
-        'id' => 2,
-        'appNo' => 'SLR/AOT/2026/0002',
-        'nic' => '957891234V',
-        'compNo' => '1055',
-        'name' => 'K. D. Silva',
-        'desig' => 'Signal Inspector',
-        'status' => 'Approved'
-    ],
-    [
-        'id' => 3,
-        'appNo' => 'SLR/AOT/2026/0003',
-        'nic' => '923456789V',
-        'compNo' => '1056',
-        'name' => 'M. N. Fernando',
-        'desig' => 'Locomotive Driver',
-        'status' => 'Approved'
-    ]
-];
-
-// Handle Search Filter matching appli-approve-IB style[cite: 25, 26]
 $searchQuery = trim($_GET['search'] ?? '');
-$displayData = $finalApprovedData;
+$displayData = [];
 
-if (!empty($searchQuery)) {
-    $displayData = array_filter($displayData, function($item) use ($searchQuery) {
-        return stripos($item['nic'], $searchQuery) !== false || 
-               stripos($item['name'], $searchQuery) !== false || 
-               stripos($item['appNo'], $searchQuery) !== false;
-    });
+$conn = getDBConnection();
+
+$sql = "SELECT a.id,
+               a.application_no,
+               a.nic,
+               a.computer_no,
+               a.final_status,
+               a.final_reason,
+               a.quarter_type,
+               a.waiting_list_no,
+               u.name,
+               COALESCE(u.applicant_designation, '') AS applicant_designation
+        FROM applications AS a
+        INNER JOIN users AS u ON u.nic = a.nic
+        WHERE a.final_status = 'approved'
+          AND a.application_status = 'approved'";
+
+if ($searchQuery !== '') {
+    $sql .= " AND (a.application_no LIKE ?
+                OR a.nic LIKE ?
+                OR a.computer_no LIKE ?
+                OR u.name LIKE ?)";
+    $searchTerm = '%' . $searchQuery . '%';
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date DESC, a.id DESC');
+    $stmt->bind_param('ssss', $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+} else {
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date DESC, a.id DESC');
 }
+
+$stmt->execute();
+$displayData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
 
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
@@ -92,28 +91,27 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         box-sizing: border-box;
     }
 
-    .back-link { 
-        display: inline-flex; 
-        align-items: center; 
-        gap: 8px; 
-        color: var(--primary-color); 
-        text-decoration: none; 
-        font-weight: 600; 
-        margin-bottom: 20px; 
+    .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--primary-color);
+        text-decoration: none;
+        font-weight: 600;
+        margin-bottom: 20px;
         font-size: 0.95rem;
     }
 
     .back-link:hover {
         text-decoration: underline;
     }
-    
+
     .approval-header {
         text-align: center;
         margin-bottom: 25px;
     }
 
-    /* Title style matching appli-approve-IB exactly[cite: 25] */
-    .approval-container h2 { 
+    .approval-container h2 {
         font-size: 1.8rem;
         color: var(--primary-color);
         margin-bottom: 10px;
@@ -185,52 +183,51 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         background: #fee2e2;
     }
 
-    /* Search card matching appli-approve-IB style[cite: 25] */
-    .search-card { 
-        background: var(--card-bg); 
-        padding: 18px 22px; 
-        border-radius: 12px; 
-        box-shadow: 0 4px 15px rgba(0,0,0,0.04); 
-        margin-bottom: 20px; 
-        display: flex; 
-        justify-content: space-between; 
-        align-items: center; 
-        flex-wrap: wrap; 
-        gap: 15px; 
+    .search-card {
+        background: var(--card-bg);
+        padding: 18px 22px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.04);
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
         border: 1px solid var(--border-color);
         width: 100%;
         box-sizing: border-box;
     }
 
-    .search-wrapper { 
-        display: flex; 
-        gap: 10px; 
-        align-items: center; 
+    .search-wrapper {
+        display: flex;
+        gap: 10px;
+        align-items: center;
         flex: 1;
         min-width: 280px;
     }
-    
+
     .search-input-container {
         position: relative;
         flex: 1;
         max-width: 350px;
     }
 
-    .search-input { 
+    .search-input {
         width: 100%;
-        padding: 10px 36px 10px 14px; 
-        border-radius: 8px; 
-        border: 1px solid #cbd5e1; 
-        font-size: 0.9rem; 
-        outline: none; 
+        padding: 10px 36px 10px 14px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        font-size: 0.9rem;
+        outline: none;
         box-sizing: border-box;
     }
-    
-    .search-input:focus { 
-        border-color: var(--primary-color); 
-        box-shadow: 0 0 0 3px rgba(122, 28, 28, 0.1); 
+
+    .search-input:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(122, 28, 28, 0.1);
     }
-    
+
     .search-clear-icon {
         position: absolute;
         right: 12px;
@@ -244,50 +241,50 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         justify-content: center;
         transition: color 0.2s;
     }
-    
+
     .search-clear-icon:hover {
         color: var(--text-main);
     }
 
-    .search-btn, .print-btn { 
-        border: none; 
-        padding: 10px 18px; 
-        border-radius: 8px; 
-        font-weight: 600; 
-        cursor: pointer; 
-        display: inline-flex; 
-        align-items: center; 
-        gap: 6px; 
+    .search-btn, .print-btn {
+        border: none;
+        padding: 10px 18px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         font-size: 0.9rem;
-        text-decoration: none; 
-        transition: background 0.2s; 
-    }
-    
-    .search-btn { 
-        background-color: var(--primary-color); 
-        color: white; 
-    }
-    
-    .search-btn:hover { 
-        background-color: var(--primary-dark); 
-    }
-    
-    .print-btn { 
-        background-color: #0284c7; 
-        color: white; 
-    }
-    
-    .print-btn:hover { 
-        background-color: #0369a1; 
+        text-decoration: none;
+        transition: background 0.2s;
     }
 
-    .table-card { 
-        background: var(--card-bg); 
-        padding: 20px; 
-        border-radius: 12px; 
-        box-shadow: 0 8px 20px rgba(0,0,0,0.05); 
-        border-top: 5px solid var(--primary-color); 
-        overflow-x: auto; 
+    .search-btn {
+        background-color: var(--primary-color);
+        color: white;
+    }
+
+    .search-btn:hover {
+        background-color: var(--primary-dark);
+    }
+
+    .print-btn {
+        background-color: #0284c7;
+        color: white;
+    }
+
+    .print-btn:hover {
+        background-color: #0369a1;
+    }
+
+    .table-card {
+        background: var(--card-bg);
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+        border-top: 5px solid var(--primary-color);
+        overflow-x: auto;
         width: 100%;
         box-sizing: border-box;
     }
@@ -298,30 +295,30 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         -webkit-overflow-scrolling: touch;
     }
 
-    .approval-table { 
-        width: 100%; 
-        border-collapse: collapse; 
-        text-align: center; 
+    .approval-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: center;
         font-size: 0.9rem;
         white-space: nowrap;
     }
-    
-    .approval-table th, .approval-table td { 
-        padding: 14px 16px; 
+
+    .approval-table th, .approval-table td {
+        padding: 14px 16px;
         border-bottom: 1px solid var(--border-color);
-        vertical-align: middle; 
+        vertical-align: middle;
     }
-    
-    .approval-table th { 
-        background-color: #f8fafc; 
-        color: var(--text-main); 
-        font-weight: 700; 
-        text-transform: uppercase; 
+
+    .approval-table th {
+        background-color: #f8fafc;
+        color: var(--text-main);
+        font-weight: 700;
+        text-transform: uppercase;
         font-size: 0.75rem;
         letter-spacing: 0.5px;
         border-bottom: 2px solid var(--border-color);
     }
-    
+
     .approval-table tr:hover {
         background-color: #f1f5f9;
     }
@@ -418,23 +415,23 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             print-color-adjust: exact;
         }
 
-        .back-link, .search-card, .user-profile-wrapper { 
-            display: none !important; 
+        .back-link, .search-card, .user-profile-wrapper {
+            display: none !important;
         }
 
-        .table-card { 
-            box-shadow: none !important; 
-            border: none !important; 
-            padding: 0 !important; 
+        .table-card {
+            box-shadow: none !important;
+            border: none !important;
+            padding: 0 !important;
         }
 
-        .approval-table { 
-            width: 100% !important; 
-            font-size: 8.5pt !important; 
+        .approval-table {
+            width: 100% !important;
+            font-size: 8.5pt !important;
         }
 
-        .approval-table th, .approval-table td { 
-            padding: 8px 10px !important; 
+        .approval-table th, .approval-table td {
+            padding: 8px 10px !important;
         }
     }
 </style>
@@ -456,7 +453,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
             <div id="profileDropdown" class="profile-dropdown">
                 <a href="edit_profile.php"><i class="fa-solid fa-user-pen"></i> Edit Profile</a>
-                <a href="SC.php"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
+                <a href="SC_dashboard.php"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
                 <a href="#" class="logout-btn" onclick="openLogoutModal(event)"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
             </div>
         </div>
@@ -466,11 +463,12 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         <h2>Final Approval Approved Application List</h2>
     </div>
 
-    <!-- Search Card matching appli-approve-IB style[cite: 25] -->
     <form method="GET" action="" class="search-card">
         <div class="search-wrapper">
             <div class="search-input-container">
-                <input type="text" name="search" class="search-input" placeholder="Search by NIC or Name..." value="<?php echo htmlspecialchars($searchQuery); ?>">
+                <input type="text" name="search" class="search-input"
+                       placeholder="Search by Application No, NIC or Name..."
+                       value="<?php echo htmlspecialchars($searchQuery); ?>">
                 <?php if (!empty($searchQuery)): ?>
                     <a href="?" class="search-clear-icon" title="Clear Search"><i class="fa-solid fa-xmark"></i></a>
                 <?php endif; ?>
@@ -497,18 +495,20 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                 <tbody>
                     <?php if (empty($displayData)): ?>
                         <tr>
-                            <td colspan="7" style="text-align: center; color: #64748b; padding: 30px;">No applications found.</td>
+                            <td colspan="7" style="text-align: center; color: #64748b; padding: 30px;">
+                                No finally-approved applications found.
+                            </td>
                         </tr>
                     <?php else: ?>
                         <?php $no = 1; foreach ($displayData as $row): ?>
                             <tr>
                                 <td><?php echo $no++; ?></td>
-                                <td><strong><?php echo htmlspecialchars($row['appNo']); ?></strong></td>
+                                <td><strong><?php echo htmlspecialchars($row['application_no'] ?? (string)$row['id']); ?></strong></td>
                                 <td><?php echo htmlspecialchars($row['nic']); ?></td>
-                                <td><?php echo htmlspecialchars($row['compNo']); ?></td>
+                                <td><?php echo htmlspecialchars($row['computer_no']); ?></td>
                                 <td><?php echo htmlspecialchars($row['name']); ?></td>
-                                <td><?php echo htmlspecialchars($row['desig']); ?></td>
-                                <td><span class="status-badge"><?php echo htmlspecialchars($row['status']); ?></span></td>
+                                <td><?php echo htmlspecialchars($row['applicant_designation'] ?? ''); ?></td>
+                                <td><span class="status-badge"><?php echo htmlspecialchars(ucfirst($row['final_status'])); ?></span></td>
                             </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>
