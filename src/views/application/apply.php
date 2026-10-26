@@ -3,6 +3,37 @@ require_once __DIR__ . '/../../controllers/AuthController.php';
 $auth = new AuthController();
 $auth->requireLogin();
 
+// ---------- AJAX: quarter search (joint residence) ----------
+if (isset($_GET['ajax_search'])) {
+    while (ob_get_level()) { ob_end_clean(); }
+    header('Content-Type: application/json; charset=utf-8');
+
+    $quarterNo = trim($_GET['quarter_no'] ?? '');
+    if ($quarterNo === '') {
+        echo json_encode(['found' => false]);
+        exit();
+    }
+
+    $conn = getDBConnection();
+    $stmt = $conn->prepare(
+        "SELECT quarter_no, nic, computer_no, quarter_type, resident_name,
+                designation, workplace, allocated_date, other
+         FROM allocated_quarters
+         WHERE quarter_no = ?
+         ORDER BY id ASC
+         LIMIT 1"
+    );
+    $stmt->bind_param('s', $quarterNo);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    $conn->close();
+
+    echo json_encode($row ? ['found' => true, 'data' => $row] : ['found' => false]);
+    exit();
+}
+// ------------------------------------------------------------
+
 $user = $_SESSION['user_name'] ?? 'User';
 $pageTitle = 'Joint Residence - Quarter Search';
 include __DIR__ . '/../layouts/header.php';
@@ -75,34 +106,8 @@ include __DIR__ . '/../layouts/header.php';
 </main>
 
 <!-- JavaScript for Search Logic -->
-<script>
-    // Sample database simulation for quarters
-    const quartersData = {
-        "Q-001": {
-            no: "Q-001",
-            nic: "199012345678",
-            compNo: "C-1001",
-            type: "Joint Residence",
-            name: "S. Vihanga",
-            designation: "Station Master",
-            workplace: "Colombo Fort",
-            allocatedDate: "2024-05-10",
-            other: "Primary resident active with shared occupant approval."
-        },
-        "Q-002": {
-            no: "Q-002",
-            nic: "198587654321",
-            compNo: "C-1002",
-            type: "Joint Residence",
-            name: "A. B. Perera",
-            designation: "Signal Inspector",
-            workplace: "Maradana",
-            allocatedDate: "2023-11-15",
-            other: "Standard joint allocation agreement completed."
-        }
-    };
 
-    // Function to handle Enter key press event
+<script>
     function handleKeyPress(event) {
         if (event.key === 'Enter') {
             searchQuarter();
@@ -110,28 +115,46 @@ include __DIR__ . '/../layouts/header.php';
     }
 
     function searchQuarter() {
-        const query = document.getElementById('quarterSearchInput').value.trim();
+        const query     = document.getElementById('quarterSearchInput').value.trim();
         const resultBox = document.getElementById('resultContainer');
-        const errorMsg = document.getElementById('errorMsg');
+        const errorMsg  = document.getElementById('errorMsg');
 
-        if (quartersData[query]) {
-            const data = quartersData[query];
-            document.getElementById('resNo').innerText = data.no;
-            document.getElementById('resNic').innerText = data.nic;
-            document.getElementById('resCompNo').innerText = data.compNo;
-            document.getElementById('resType').innerText = data.type;
-            document.getElementById('resName').innerText = data.name;
-            document.getElementById('resDesignation').innerText = data.designation;
-            document.getElementById('resWorkplace').innerText = data.workplace;
-            document.getElementById('resDate').innerText = data.allocatedDate;
-            document.getElementById('resOther').innerText = data.other;
+        resultBox.classList.add('hidden');
+        errorMsg.classList.add('hidden');
 
-            resultBox.classList.remove('hidden');
-            errorMsg.classList.add('hidden');
-        } else {
-            resultBox.classList.add('hidden');
+        if (query === '') {
+            errorMsg.textContent = 'Please enter a Quarter No.';
             errorMsg.classList.remove('hidden');
+            return;
         }
+
+        fetch(window.location.pathname + '?ajax_search=1&quarter_no=' + encodeURIComponent(query), {
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' }
+        })
+        .then(function (response) { return response.json(); })
+        .then(function (res) {
+            if (res.found) {
+                const d = res.data;
+                document.getElementById('resNo').innerText          = d.quarter_no || '-';
+                document.getElementById('resNic').innerText         = d.nic || '-';
+                document.getElementById('resCompNo').innerText      = d.computer_no || '-';
+                document.getElementById('resType').innerText        = d.quarter_type || '-';
+                document.getElementById('resName').innerText        = d.resident_name || '-';
+                document.getElementById('resDesignation').innerText = d.designation || '-';
+                document.getElementById('resWorkplace').innerText   = d.workplace || '-';
+                document.getElementById('resDate').innerText        = d.allocated_date || '-';
+                document.getElementById('resOther').innerText       = d.other || '-';
+                resultBox.classList.remove('hidden');
+            } else {
+                errorMsg.textContent = 'Quarter not found. Please check the Quarter No and try again.';
+                errorMsg.classList.remove('hidden');
+            }
+        })
+        .catch(function () {
+            errorMsg.textContent = 'Something went wrong while searching. Please try again.';
+            errorMsg.classList.remove('hidden');
+        });
     }
 </script>
 

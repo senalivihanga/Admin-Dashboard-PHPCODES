@@ -9,16 +9,71 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// ---------------------------------------------------------------
+// FA Dashboard stats — real counts, matching the pages each
+// tile links to (appli_approve_FA.php, pending_list_FA.php,
+// approve_reject_list_FA.php?tab=approved|rejected).
+// ---------------------------------------------------------------
+$conn = getDBConnection();
+
+// 1. Total: every application that has reached the FA stage
+//    (either currently pending or already decided).
+$totalStmt = $conn->query(
+    "SELECT COUNT(*) AS total
+       FROM applications
+      WHERE boss_status  = 'approved'
+        AND file_status  = 'approved'
+        AND clerk_status = 'approved'"
+);
+$totalApprovals = (int)($totalStmt->fetch_assoc()['total'] ?? 0);
+$totalStmt->close();
+
+// 2. Pending: waiting at the FA's desk right now.
+//    Same predicate as appli_approve_FA.php.
+$pendingStmt = $conn->query(
+    "SELECT COUNT(*) AS total
+       FROM applications
+      WHERE boss_status  = 'approved'
+        AND file_status  = 'approved'
+        AND clerk_status = 'approved'
+        AND final_status = 'pending'
+        AND application_status NOT IN ('rejected','returned_to_boss','returned_to_file')"
+);
+$pendingCount = (int)($pendingStmt->fetch_assoc()['total'] ?? 0);
+$pendingStmt->close();
+
+// 3. Approved: FA has granted final approval.
+$approvedStmt = $conn->query(
+    "SELECT COUNT(*) AS total
+       FROM applications
+      WHERE final_status = 'approved'"
+);
+$approvedCount = (int)($approvedStmt->fetch_assoc()['total'] ?? 0);
+$approvedStmt->close();
+
+// 4. Rejected: FA has rejected (only rows that still exist — the
+//    current reject flow deletes the row, so this usually reads 0).
+$rejectedStmt = $conn->query(
+    "SELECT COUNT(*) AS total
+       FROM applications
+      WHERE final_status = 'rejected'"
+);
+$rejectedCount = (int)($rejectedStmt->fetch_assoc()['total'] ?? 0);
+$rejectedStmt->close();
+
+$conn->close();
+
+$dashboardStats = [
+    'total_approvals' => $totalApprovals,
+    'pending_list'    => $pendingCount,
+    'approved_list'   => $approvedCount,
+    'rejected_list'   => $rejectedCount
+];
+
 // Page Title saskasima
 $pageTitle = "Final Approval Dashboard - Sri Lanka Railways";
 
-// Dashboard data counts
-$dashboardStats = [
-    'total_approvals' => 8,
-    'pending_list' => 8,
-    'approved_list' => 12,
-    'rejected_list' => 4
-];
+
 
 $userData = [
     'name' => 'Final Approver',
