@@ -19,16 +19,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fileReason = $action === 'reject' ? $reason : null;
         // Approve -> continues to Subject Clerk. Reject -> goes BACK TO THE IMMEDIATE BOSS (not the applicant).
         $applicationStatus = $action === 'approve' ? 'pending_clerk' : 'returned_to_boss';
+
+        // >>> CHANGED: removed `AND is_resubmission = 0` so resubmitted apps
+        //              (approved by IB) also arrive here and can be actioned.
         $stmt = $conn->prepare(
             "UPDATE applications
              SET file_status = ?, file_reason = ?, application_status = ?, clerk_status = 'pending'
              WHERE id = ? AND boss_status = 'approved'
-               AND file_status = 'pending' AND is_resubmission = 0"
+               AND file_status = 'pending'"
         );
         $stmt->bind_param('sssi', $fileStatus, $fileReason, $applicationStatus, $id);
         $stmt->execute();
 
-                if ($stmt->affected_rows === 1) {
+        if ($stmt->affected_rows === 1) {
             $message = $action === 'approve'
                 ? 'Application has been successfully approved.'
                 : 'Application rejected successfully.';
@@ -45,6 +48,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
+
+// >>> CHANGED: removed `AND a.is_resubmission = 0` so both new and
+//              resubmitted applications appear on PF's normal approval desk.
 $sql = "SELECT a.id, a.application_no, a.nic, a.computer_no, a.boss_status,
                u.name, u.applicant_designation, u.applicant_current_work_station,
                u.applicant_personal_file_office
@@ -52,7 +58,6 @@ $sql = "SELECT a.id, a.application_no, a.nic, a.computer_no, a.boss_status,
         INNER JOIN users AS u ON u.nic = a.nic
         WHERE a.boss_status = 'approved'
           AND a.file_status = 'pending'
-          AND a.is_resubmission = 0
           AND a.application_status = 'pending_clerk'";
 
 if ($search !== '') {
@@ -255,7 +260,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             align-items: center;
             gap: 10px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-            transition: opacity 0.5s ease; /* Added smooth fade transition */
+            transition: opacity 0.5s ease;
         }
 
         .system-alert.success {
@@ -296,7 +301,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             overflow-wrap: break-word;
         }
 
-        /* Normal Screen Column Widths (Total 100%) */
         .approval-table th:nth-child(1), .approval-table td:nth-child(1) { width: 4%; }
         .approval-table th:nth-child(2), .approval-table td:nth-child(2) { width: 12%; }
         .approval-table th:nth-child(3), .approval-table td:nth-child(3) { width: 10%; }
@@ -391,7 +395,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             background-color: #f1f5f9;
         }
 
-        /* Modal Overlay */
         .modal {
             display: none;
             position: fixed;
@@ -449,7 +452,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             cursor: pointer;
         }
 
-        /* Mobile Responsive Breakpoints */
         @media (max-width: 768px) {
             .approval-container {
                 padding: 10px 15px;
@@ -473,7 +475,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             }
         }
 
-        /* Print Specific CSS to Expand Table Across Full Landscape Page */
         @media print {
             @page {
                 size: landscape;
@@ -556,14 +557,12 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 <body>
 
     <main class="approval-container">
-        <!-- Connected back to Personal File Dashboard -->
         <a href="PF_Dashboard.php" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
         
         <div class="approval-header">
             <h2>Application Approval List</h2>
         </div>
 
-        <!-- System Message Notification Area -->
         <?php if (!empty($message)): ?>
         <div id="systemAlert" class="system-alert <?php echo $messageType; ?>">
             <i class="fa-solid <?php echo ($messageType === 'success') ? 'fa-circle-check' : 'fa-triangle-exclamation'; ?>"></i> 
@@ -571,7 +570,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         </div>
         <?php endif; ?>
 
-        <!-- Search Bar and Print Option Bar -->
         <form method="GET" action="" class="search-card">
             <div class="search-wrapper">
                 <div class="search-input-container">
@@ -587,7 +585,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
         <div class="table-card">
             <div class="table-responsive">
-                <table class="approval-approval-table approval-table" id="approvalTable">
+                <table class="approval-table" id="approvalTable">
                     <thead>
                         <tr>
                             <th>No.</th>
@@ -640,7 +638,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         </div>
     </main>
 
-    <!-- Rejection Reason Modal -->
     <div id="rejectModal" class="modal">
         <div class="modal-content">
             <h3>Provide Rejection Reason</h3>
@@ -667,7 +664,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             document.getElementById(modalId).style.display = 'none';
         }
 
-        // Auto remove message alert box after 2 seconds with fade-out effect
         document.addEventListener("DOMContentLoaded", function() {
             const alertBox = document.getElementById('systemAlert');
             if (alertBox) {
@@ -675,13 +671,15 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                     alertBox.style.opacity = '0';
                     setTimeout(function() {
                         alertBox.style.display = 'none';
-                    }, 500); // Wait for fade-out transition to finish (0.5s)
-                }, 2000); // 2 seconds delay
+                    }, 500);
+                }, 2000);
             }
         });
     </script>
 </body>
 </html>
 <?php
+// >>> FIXED: this used to be a second `admin_header.php` include that
+//            broke the page. Now correctly loads the footer once.
 require_once __DIR__ . '/../layouts/admin_footer.php';
 ?>

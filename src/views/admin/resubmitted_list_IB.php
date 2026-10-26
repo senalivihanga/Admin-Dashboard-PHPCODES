@@ -571,5 +571,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 </script>
 
 <?php
-require_once __DIR__ . '/../layouts/admin_header.php';
+// >>> FIXED: was including admin_header.php a second time (produced a broken
+//            page with no footer + duplicated HTML). Correct is admin_footer.
+require_once __DIR__ . '/../layouts/admin_footer.php';
 ?>
