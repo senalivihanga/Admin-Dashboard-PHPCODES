@@ -2,14 +2,14 @@
 /**
  * Application Approval List - Final Approver - Sri Lanka Railways
  * ----------------------------------------------------------------
- * The Final Approver's "Application Approval" page shows ONLY applications
- * that have been approved by the Subject Clerk and are awaiting the Final
- * Approver's decision, i.e.:
- *   - boss_status       = 'approved'   (Immediate Boss approved)
- *   - file_status       = 'approved'   (Personal File approved)
- *   - clerk_status      = 'approved'   (Subject Clerk approved)
- *   - branch_status     = 'approved'   (Branch Officer approved)
- *   - final_status      = 'pending'    (Final Approver has NOT decided yet)
+ * Final Approver's "Application Approval" page shows ONLY applications
+ * where boss/file/clerk have all approved and `final_status = 'pending'`.
+ *
+ * >>> CHANGED (per new requirement):
+ *   - On REJECT  -> delete the application entirely (waiting_list row,
+ *                   child detail rows via FK cascade) and notify the
+ *                   applicant BEFORE deletion so the notification survives.
+ *   - On APPROVE -> unchanged (existing waiting-list insertion logic).
  */
 require_once __DIR__ . '/../../../config/config.php';
 
@@ -42,129 +42,211 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $reason = trim((string)($_POST['rejectionReason'] ?? ''));
 
     if ($id && ($action === 'approve' || ($action === 'reject' && $reason !== ''))) {
-        $finalStatus       = $action === 'approve' ? 'approved' : 'rejected';
-        $finalReason       = $action === 'reject'  ? $reason    : null;
-        // Approve → application fully approved. Reject → rejected.
-        $applicationStatus = $action === 'approve' ? 'approved' : 'rejected';
 
-        $conn->begin_transaction();
-        try {
-            // (c) Final Approver can only act once Branch Officer has approved too
-            $stmt = $conn->prepare(
-                "UPDATE applications
-                    SET final_status = ?, final_reason = ?, application_status = ?
-                WHERE id = ?
-                    AND boss_status    = 'approved'
-                    AND file_status    = 'approved'
-                    AND clerk_status   = 'approved'
-                    AND final_status   = 'pending'"
-            );
-            $stmt->bind_param('sssi', $finalStatus, $finalReason, $applicationStatus, $id);
-            $stmt->execute();
-            $wasFinalized = $stmt->affected_rows === 1;
-            $stmt->close();
-
-            if ($wasFinalized && $action === 'approve') {
-                $applicationStmt = $conn->prepare(
-                    "SELECT nic, quarter_type, waiting_list_no, COALESCE(marks, 0) AS marks
-                       FROM applications
-                      WHERE id = ?"
+        if ($action === 'approve') {
+            // ---------- APPROVE FLOW (unchanged) ----------
+            $conn->begin_transaction();
+            try {
+                $stmt = $conn->prepare(
+                    "UPDATE applications
+                        SET final_status = 'approved',
+                            final_reason = NULL,
+                            application_status = 'approved'
+                      WHERE id = ?
+                        AND boss_status  = 'approved'
+                        AND file_status  = 'approved'
+                        AND clerk_status = 'approved'
+                        AND final_status = 'pending'"
                 );
-                $applicationStmt->bind_param('i', $id);
-                $applicationStmt->execute();
-                $application = $applicationStmt->get_result()->fetch_assoc();
-                $applicationStmt->close();
+                $stmt->bind_param('i', $id);
+                $stmt->execute();
+                $wasFinalized = $stmt->affected_rows === 1;
+                $stmt->close();
 
-                if (!$application) {
-                    throw new RuntimeException('The approved application could not be loaded for waiting-list placement.');
-                }
-
-                $waitingListNo = (int)($application['waiting_list_no'] ?? 0);
-                $alreadyListed = false;
-
-                if ($waitingListNo > 0) {
-                    // (b) Only check nic + position, since position is now global
-                    $existingWaitingStmt = $conn->prepare(
-                        "SELECT id FROM waiting_list
-                          WHERE nic = ? AND position = ?
-                          LIMIT 1"
+                if ($wasFinalized) {
+                    // Fetch the data we need for waiting-list insertion
+                    $applicationStmt = $conn->prepare(
+                        "SELECT nic, quarter_type, waiting_list_no, COALESCE(marks, 0) AS marks
+                           FROM applications
+                          WHERE id = ?"
                     );
-                    $existingWaitingStmt->bind_param('si', $application['nic'], $waitingListNo);
-                    $existingWaitingStmt->execute();
-                    $alreadyListed = $existingWaitingStmt->get_result()->num_rows > 0;
-                    $existingWaitingStmt->close();
-                }
+                    $applicationStmt->bind_param('i', $id);
+                    $applicationStmt->execute();
+                    $application = $applicationStmt->get_result()->fetch_assoc();
+                    $applicationStmt->close();
 
-                if (!$alreadyListed) {
-                    // (a) Global MAX(position) — one queue for the whole system
-                    $positionStmt = $conn->prepare(
-                        "SELECT COALESCE(MAX(position), 0) + 1 AS next_position
-                           FROM waiting_list"
-                    );
-                    $positionStmt->execute();
-                    $waitingListNo = (int)$positionStmt->get_result()->fetch_assoc()['next_position'];
-                    $positionStmt->close();
+                    if (!$application) {
+                        throw new RuntimeException('The approved application could not be loaded for waiting-list placement.');
+                    }
 
-                    $waitingStmt = $conn->prepare(
-                        "INSERT INTO waiting_list
-                            (nic, position, quarter_type, applied_date, employee_marks)
-                         VALUES (?, ?, ?, CURDATE(), ?)"
-                    );
-                    $marks = (int)$application['marks'];
-                    $waitingStmt->bind_param(
-                        'sisi',
-                        $application['nic'],
-                        $waitingListNo,
-                        $application['quarter_type'],
-                        $marks
-                    );
-                    $waitingStmt->execute();
-                    $waitingStmt->close();
+                    $waitingListNo = (int)($application['waiting_list_no'] ?? 0);
+                    $alreadyListed = false;
 
-                    $applicationListStmt = $conn->prepare(
-                        "UPDATE applications SET waiting_list_no = ? WHERE id = ?"
-                    );
-                    $applicationListStmt->bind_param('ii', $waitingListNo, $id);
-                    $applicationListStmt->execute();
-                    $applicationListStmt->close();
-                }
-            }
+                    if ($waitingListNo > 0) {
+                        $existingWaitingStmt = $conn->prepare(
+                            "SELECT id FROM waiting_list
+                              WHERE nic = ? AND position = ?
+                              LIMIT 1"
+                        );
+                        $existingWaitingStmt->bind_param('si', $application['nic'], $waitingListNo);
+                        $existingWaitingStmt->execute();
+                        $alreadyListed = $existingWaitingStmt->get_result()->num_rows > 0;
+                        $existingWaitingStmt->close();
+                    }
 
-            if ($wasFinalized) {
-                // Notify the applicant
-                if ($action === 'approve') {
+                    if (!$alreadyListed) {
+                        $positionStmt = $conn->prepare(
+                            "SELECT COALESCE(MAX(position), 0) + 1 AS next_position
+                               FROM waiting_list"
+                        );
+                        $positionStmt->execute();
+                        $waitingListNo = (int)$positionStmt->get_result()->fetch_assoc()['next_position'];
+                        $positionStmt->close();
+
+                        $waitingStmt = $conn->prepare(
+                            "INSERT INTO waiting_list
+                                (nic, position, quarter_type, applied_date, employee_marks)
+                             VALUES (?, ?, ?, CURDATE(), ?)"
+                        );
+                        $marks = (int)$application['marks'];
+                        $waitingStmt->bind_param(
+                            'sisi',
+                            $application['nic'],
+                            $waitingListNo,
+                            $application['quarter_type'],
+                            $marks
+                        );
+                        $waitingStmt->execute();
+                        $waitingStmt->close();
+
+                        $applicationListStmt = $conn->prepare(
+                            "UPDATE applications SET waiting_list_no = ? WHERE id = ?"
+                        );
+                        $applicationListStmt->bind_param('ii', $waitingListNo, $id);
+                        $applicationListStmt->execute();
+                        $applicationListStmt->close();
+                    }
+
+                    // Notify applicant of approval
                     $notifTitle = 'Application Approved';
                     $notifMsg   = 'Your quarter application has been fully approved by the Final Approver. '
                                 . 'You have been added to the waiting list at position ' . (int)$waitingListNo . '.';
-                } else {
-                    $notifTitle = 'Application Rejected';
-                    $notifMsg   = 'Your application was rejected by the Final Approver. Reason: ' . $reason;
+                    $notif = $conn->prepare(
+                        "INSERT INTO notifications (nic, title, message, is_read)
+                         SELECT nic, ?, ?, 0
+                         FROM applications WHERE id = ?"
+                    );
+                    $notif->bind_param('ssi', $notifTitle, $notifMsg, $id);
+                    $notif->execute();
+                    $notif->close();
                 }
 
-                $notif = $conn->prepare(
-                    "INSERT INTO notifications (nic, title, message, is_read)
-                     SELECT nic, ?, ?, 0
-                     FROM applications WHERE id = ?"
-                );
-                $notif->bind_param('ssi', $notifTitle, $notifMsg, $id);
-                $notif->execute();
-                $notif->close();
+                $conn->commit();
+
+                if ($wasFinalized) {
+                    $alert_msg  = 'Application approved successfully and finalized.';
+                    $alert_type = 'success';
+                } else {
+                    $alert_msg  = 'This application is no longer awaiting your decision.';
+                    $alert_type = 'error';
+                }
+            } catch (Throwable $error) {
+                $conn->rollback();
+                throw $error;
             }
 
-            $conn->commit();
-        } catch (Throwable $error) {
-            $conn->rollback();
-            throw $error;
-        }
+        } elseif ($action === 'reject') {
+            // ---------- REJECT FLOW (NEW: delete + notify) ----------
+            $conn->begin_transaction();
+            try {
+                // Fetch applicant NIC and quarter info for the notification
+                $fetchStmt = $conn->prepare(
+                    "SELECT a.nic,
+                            a.application_no,
+                            a.quarter_type,
+                            a.applied_quarter_number,
+                            a.applied_quarter_location
+                       FROM applications AS a
+                      WHERE a.id = ?
+                        AND a.boss_status  = 'approved'
+                        AND a.file_status  = 'approved'
+                        AND a.clerk_status = 'approved'
+                        AND a.final_status = 'pending'
+                      LIMIT 1"
+                );
+                $fetchStmt->bind_param('i', $id);
+                $fetchStmt->execute();
+                $application = $fetchStmt->get_result()->fetch_assoc();
+                $fetchStmt->close();
 
-        if ($wasFinalized) {
-            $alert_msg  = $action === 'approve'
-                ? 'Application approved successfully and finalized.'
-                : 'Application rejected successfully.';
-            $alert_type = $action === 'approve' ? 'success' : 'error';
-        } else {
-            $alert_msg  = 'This application is no longer awaiting your decision (or the Branch Officer has not approved it yet).';
-            $alert_type = 'error';
+                if (!$application) {
+                    // Not in the correct state — nothing to delete
+                    $conn->rollback();
+                    $alert_msg  = 'This application is no longer awaiting your decision.';
+                    $alert_type = 'error';
+                } else {
+                    // 1) Insert the notification FIRST so it survives the DELETE.
+                    //    The applicant's View Status page detects this notification
+                    //    title to show the "start a new application" prompt.
+                    $notifTitle = 'Application Rejected by Final Approval';
+                    $notifMsg   = 'Your quarter application has been rejected by the Final Approver.'
+                                . ' Reason: ' . $reason
+                                . '. Because the final stage rejected your application, it has been removed from the system.'
+                                . ' You must submit a new application from the beginning if you wish to apply again.';
+
+                    $notifStmt = $conn->prepare(
+                        "INSERT INTO notifications (nic, title, message, is_read)
+                         VALUES (?, ?, ?, 0)"
+                    );
+                    $notifStmt->bind_param('sss', $application['nic'], $notifTitle, $notifMsg);
+                    $notifStmt->execute();
+                    $notifStmt->close();
+
+                    // 2) Remove any waiting_list row tied to this application,
+                    //    so the applicant doesn't linger in the queue.
+                    //    (waiting_list rows are keyed by position; we match on
+                    //     the application's own waiting_list_no if present.)
+                    $wlLookup = $conn->prepare(
+                        "SELECT waiting_list_no FROM applications WHERE id = ?"
+                    );
+                    $wlLookup->bind_param('i', $id);
+                    $wlLookup->execute();
+                    $wlRow = $wlLookup->get_result()->fetch_assoc();
+                    $wlLookup->close();
+
+                    if (!empty($wlRow['waiting_list_no'])) {
+                        $delWl = $conn->prepare(
+                            "DELETE FROM waiting_list WHERE nic = ? AND position = ?"
+                        );
+                        $delWl->bind_param('si', $application['nic'], $wlRow['waiting_list_no']);
+                        $delWl->execute();
+                        $delWl->close();
+                    }
+
+                    // 3) Delete the application itself.
+                    //    Every child table (children_details, spouse_details,
+                    //    permanent_residence_details, declaration_details, etc.)
+                    //    has ON DELETE CASCADE on application_id, so they are
+                    //    automatically removed with it.
+                    $delApp = $conn->prepare("DELETE FROM applications WHERE id = ?");
+                    $delApp->bind_param('i', $id);
+                    $delApp->execute();
+                    $deleted = $delApp->affected_rows;
+                    $delApp->close();
+
+                    if ($deleted !== 1) {
+                        throw new RuntimeException('The application could not be deleted.');
+                    }
+
+                    $conn->commit();
+                    $alert_msg  = 'Application rejected. The record has been deleted from the system and the applicant has been notified to start a fresh application.';
+                    $alert_type = 'success';
+                }
+            } catch (Throwable $error) {
+                $conn->rollback();
+                $alert_msg  = 'Rejection failed: ' . $error->getMessage();
+                $alert_type = 'error';
+            }
         }
     } elseif ($action === 'reject') {
         $alert_msg  = 'A rejection reason is required.';
@@ -173,7 +255,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // -------------------------------------------------------------
-// Fetch the Final Approver's pending queue
+// Fetch the Final Approver's pending queue (unchanged)
 // -------------------------------------------------------------
 $searchQuery = trim($_GET['search'] ?? '');
 
@@ -223,301 +305,125 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         --border-color: #e2e8f0;
     }
 
-    html {
-        overflow-y: auto;
-        overflow-x: hidden;
-    }
-
-    body {
-        margin: 0;
-        padding: 0;
-        background-color: var(--bg-color);
-        overflow-x: hidden;
-    }
+    html { overflow-y: auto; overflow-x: hidden; }
+    body { margin: 0; padding: 0; background-color: var(--bg-color); overflow-x: hidden; }
 
     .approval-container {
-        width: 100%;
-        max-width: 100%;
-        margin: 0;
-        padding: 20px 30px;
-        box-sizing: border-box;
+        width: 100%; max-width: 100%; margin: 0;
+        padding: 20px 30px; box-sizing: border-box;
+    }
+    .back-link {
+        display: inline-flex; align-items: center; gap: 8px;
+        color: var(--primary-color); text-decoration: none; font-weight: 600;
+        margin-bottom: 20px; font-size: 0.95rem;
+    }
+    .back-link:hover { text-decoration: underline; }
+
+    .approval-header { text-align: center; margin-bottom: 25px; }
+    .approval-container h2 {
+        font-size: 1.8rem; color: var(--primary-color);
+        margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;
+        text-decoration: underline; text-underline-offset: 6px; font-weight: 700;
     }
 
-    .back-link { 
-        display: inline-flex; 
-        align-items: center; 
-        gap: 8px; 
-        color: var(--primary-color); 
-        text-decoration: none; 
-        font-weight: 600; 
-        margin-bottom: 20px; 
-        font-size: 0.95rem;
+    .search-card {
+        background: var(--card-bg); padding: 18px 22px; border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.04); margin-bottom: 20px;
+        display: flex; justify-content: space-between; align-items: center;
+        flex-wrap: wrap; gap: 15px; border: 1px solid var(--border-color);
+        width: 100%; box-sizing: border-box;
     }
-
-    .back-link:hover {
-        text-decoration: underline;
+    .search-wrapper { display: flex; gap: 10px; align-items: center; flex: 1; min-width: 280px; }
+    .search-input-container { position: relative; flex: 1; max-width: 350px; }
+    .search-input {
+        width: 100%; padding: 10px 36px 10px 14px; border-radius: 8px;
+        border: 1px solid #cbd5e1; font-size: 0.9rem; outline: none; box-sizing: border-box;
     }
-    
-    .approval-header {
-        text-align: center;
-        margin-bottom: 25px;
-    }
-
-    .approval-container h2 { 
-        font-size: 1.8rem;
-        color: var(--primary-color);
-        margin-bottom: 10px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        text-decoration: underline;
-        text-underline-offset: 6px;
-        font-weight: 700;
-    }
-
-    .search-card { 
-        background: var(--card-bg); 
-        padding: 18px 22px; 
-        border-radius: 12px; 
-        box-shadow: 0 4px 15px rgba(0,0,0,0.04); 
-        margin-bottom: 20px; 
-        display: flex; 
-        justify-content: space-between; 
-        align-items: center; 
-        flex-wrap: wrap; 
-        gap: 15px; 
-        border: 1px solid var(--border-color);
-        width: 100%;
-        box-sizing: border-box;
-    }
-
-    .search-wrapper { 
-        display: flex; 
-        gap: 10px; 
-        align-items: center; 
-        flex: 1;
-        min-width: 280px;
-    }
-    
-    .search-input-container {
-        position: relative;
-        flex: 1;
-        max-width: 350px;
-    }
-
-    .search-input { 
-        width: 100%;
-        padding: 10px 36px 10px 14px; 
-        border-radius: 8px; 
-        border: 1px solid #cbd5e1; 
-        font-size: 0.9rem; 
-        outline: none; 
-        box-sizing: border-box;
-    }
-    
-    .search-input:focus { 
-        border-color: var(--primary-color); 
-        box-shadow: 0 0 0 3px rgba(122, 28, 28, 0.1); 
-    }
-    
+    .search-input:focus { border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(122, 28, 28, 0.1); }
     .search-clear-icon {
-        position: absolute;
-        right: 12px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: #94a3b8;
-        text-decoration: none;
-        font-size: 1rem;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
+        position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+        color: #94a3b8; text-decoration: none; font-size: 1rem;
+        display: inline-flex; align-items: center; justify-content: center;
         transition: color 0.2s;
     }
-    
-    .search-clear-icon:hover {
-        color: var(--text-main);
-    }
+    .search-clear-icon:hover { color: var(--text-main); }
 
-    .search-btn, .print-btn { 
-        border: none; 
-        padding: 10px 18px; 
-        border-radius: 8px; 
-        font-weight: 600; 
-        cursor: pointer; 
-        display: inline-flex; 
-        align-items: center; 
-        gap: 6px; 
-        font-size: 0.9rem;
-        text-decoration: none; 
-        transition: background 0.2s; 
+    .search-btn, .print-btn {
+        border: none; padding: 10px 18px; border-radius: 8px; font-weight: 600;
+        cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+        font-size: 0.9rem; text-decoration: none; transition: background 0.2s;
     }
-    
-    .search-btn { 
-        background-color: var(--primary-color); 
-        color: white; 
-    }
-    
-    .search-btn:hover { 
-        background-color: var(--primary-dark); 
-    }
-    
-    .print-btn { 
-        background-color: #0284c7; 
-        color: white; 
-    }
-    
-    .print-btn:hover { 
-        background-color: #0369a1; 
-    }
+    .search-btn { background-color: var(--primary-color); color: white; }
+    .search-btn:hover { background-color: var(--primary-dark); }
+    .print-btn { background-color: #0284c7; color: white; }
+    .print-btn:hover { background-color: #0369a1; }
 
-    .table-card { 
-        background: var(--card-bg); 
-        padding: 20px; 
-        border-radius: 12px; 
-        box-shadow: 0 8px 20px rgba(0,0,0,0.05); 
-        border-top: 5px solid var(--primary-color); 
-        overflow-x: auto; 
-        width: 100%;
-        box-sizing: border-box;
+    .table-card {
+        background: var(--card-bg); padding: 20px; border-radius: 12px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+        border-top: 5px solid var(--primary-color);
+        overflow-x: auto; width: 100%; box-sizing: border-box;
     }
+    .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-    .table-responsive {
-        width: 100%;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
+    .approval-table {
+        width: 100%; border-collapse: collapse; text-align: center;
+        font-size: 0.9rem; white-space: nowrap;
     }
-
-    .approval-table { 
-        width: 100%; 
-        border-collapse: collapse; 
-        text-align: center; 
-        font-size: 0.9rem;
-        white-space: nowrap;
+    .approval-table th, .approval-table td {
+        padding: 14px 16px; border-bottom: 1px solid var(--border-color);
+        vertical-align: middle;
     }
-    
-    .approval-table th, .approval-table td { 
-        padding: 14px 16px; 
-        border-bottom: 1px solid var(--border-color);
-        vertical-align: middle; 
-    }
-    
-    .approval-table th { 
-        background-color: #f8fafc; 
-        color: var(--text-main); 
-        font-weight: 700; 
-        text-transform: uppercase; 
-        font-size: 0.75rem;
-        letter-spacing: 0.5px;
+    .approval-table th {
+        background-color: #f8fafc; color: var(--text-main); font-weight: 700;
+        text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.5px;
         border-bottom: 2px solid var(--border-color);
     }
-    
-    .approval-table tr:hover {
-        background-color: #f1f5f9;
+    .approval-table tr:hover { background-color: #f1f5f9; }
+
+    .action-cell { display: flex; justify-content: center; align-items: center; gap: 6px; }
+    .action-btn {
+        border: none; width: 32px; height: 32px; border-radius: 6px; font-weight: 600;
+        cursor: pointer; font-size: 0.85rem; text-decoration: none;
+        display: inline-flex; align-items: center; justify-content: center;
+        transition: background-color 0.2s; color: white;
     }
-    
-    .action-cell { 
-        display: flex; 
-        justify-content: center; 
-        align-items: center; 
-        gap: 6px; 
-    }
-    
-    .action-btn { 
-        border: none; 
-        width: 32px; 
-        height: 32px; 
-        border-radius: 6px; 
-        font-weight: 600; 
-        cursor: pointer; 
-        font-size: 0.85rem; 
-        text-decoration: none; 
-        display: inline-flex; 
-        align-items: center; 
-        justify-content: center; 
-        transition: background-color 0.2s; 
-        color: white; 
-    }
-    
     .btn-view { background-color: #8b5cf6; }
     .btn-view:hover { background-color: #7c3aed; }
-    
     .btn-approve { background-color: #10b981; }
     .btn-approve:hover { background-color: #059669; }
-    
     .btn-reject { background-color: #ef4444; }
     .btn-reject:hover { background-color: #dc2626; }
 
     .system-alert {
-        background-color: #f0fdf4;
-        color: #166534;
-        padding: 12px 20px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        font-weight: 600;
-        border: 1px solid #bbf7d0;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        transition: opacity 0.5s ease;
+        background-color: #f0fdf4; color: #166534; padding: 12px 20px;
+        border-radius: 8px; margin-bottom: 20px; font-weight: 600;
+        border: 1px solid #bbf7d0; display: flex; align-items: center;
+        gap: 10px; transition: opacity 0.5s ease;
     }
-
     .system-alert.error {
-        background-color: #fef2f2;
-        color: #991b1b;
-        border-color: #fecaca;
+        background-color: #fef2f2; color: #991b1b; border-color: #fecaca;
     }
 
-    .custom-msg-box { 
-        display: none; 
-        position: fixed; 
-        top: 0; 
-        left: 0; 
-        width: 100%; 
-        height: 100%; 
-        background: rgba(0,0,0,0.5); 
-        justify-content: center; 
-        align-items: center; 
-        z-index: 1000; 
-        padding: 15px; 
-        box-sizing: border-box; 
+    .custom-msg-box {
+        display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.5); justify-content: center; align-items: center;
+        z-index: 1000; padding: 15px; box-sizing: border-box;
     }
-    .msg-content { 
-        background: white; 
-        padding: 25px; 
-        border-radius: 10px; 
-        width: 100%; 
-        max-width: 400px; 
-        box-shadow: 0 5px 15px rgba(0,0,0,0.3); 
+    .msg-content {
+        background: white; padding: 25px; border-radius: 10px; width: 100%;
+        max-width: 400px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);
     }
-    .msg-content h3 { 
-        color: var(--primary-color); 
-        margin-bottom: 15px; 
-        font-size: 1.1rem; 
+    .msg-content h3 { color: var(--primary-color); margin-bottom: 15px; font-size: 1.1rem; }
+    .msg-content p  { color: #991b1b; font-size: 0.9rem; margin-bottom: 15px; line-height: 1.5; }
+    .msg-content textarea {
+        width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;
+        margin-bottom: 15px; outline: none; box-sizing: border-box; font-family: inherit;
     }
-    .msg-content textarea { 
-        width: 100%; 
-        padding: 10px; 
-        border: 1px solid #cbd5e1; 
-        border-radius: 6px; 
-        margin-bottom: 15px; 
-        outline: none; 
-        box-sizing: border-box; 
-        font-family: inherit; 
-    }
-    .msg-btns { 
-        display: flex; 
-        justify-content: flex-end; 
-        gap: 10px; 
-    }
-    .msg-btn { 
-        padding: 8px 15px; 
-        border: none; 
-        border-radius: 5px; 
-        font-weight: 600; 
-        cursor: pointer; 
-        color: white; 
-    }
+    .msg-btns { display: flex; justify-content: flex-end; gap: 10px; }
+    .msg-btn { padding: 8px 15px; border: none; border-radius: 5px; font-weight: 600; cursor: pointer; color: white; }
     .msg-btn-yes { background-color: var(--danger-color); }
-    .msg-btn-no { background-color: #64748b; }
+    .msg-btn-no  { background-color: #64748b; }
 
     @media (max-width: 768px) {
         .approval-container { padding: 10px 15px; }
@@ -529,40 +435,13 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     }
 
     @media print {
-        @page {
-            size: landscape;
-            margin: 5mm;
-        }
-
-        html, body {
-            background-color: #ffffff !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-        }
-
-        .back-link, .search-card, .system-alert { 
-            display: none !important; 
-        }
-
-        .table-card { 
-            box-shadow: none !important; 
-            border: none !important; 
-            padding: 0 !important; 
-        }
-
-        .approval-table { 
-            width: 100% !important; 
-            font-size: 8.5pt !important; 
-        }
-
-        .approval-table th, .approval-table td { 
-            padding: 8px 10px !important; 
-        }
-
-        th:nth-child(7), td:nth-child(7),
-        th:nth-child(8), td:nth-child(8) { 
-            display: none !important; 
-        }
+        @page { size: landscape; margin: 5mm; }
+        html, body { background-color: #ffffff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .back-link, .search-card, .system-alert { display: none !important; }
+        .table-card { box-shadow: none !important; border: none !important; padding: 0 !important; }
+        .approval-table { width: 100% !important; font-size: 8.5pt !important; }
+        .approval-table th, .approval-table td { padding: 8px 10px !important; }
+        th:nth-child(7), td:nth-child(7), th:nth-child(8), td:nth-child(8) { display: none !important; }
     }
 </style>
 
@@ -649,6 +528,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 <div class="custom-msg-box" id="rejectModal">
     <div class="msg-content">
         <h3>Provide Rejection Reason</h3>
+        <p><strong>Warning:</strong> Rejecting here will permanently delete this application from the system. The applicant will be notified and must start a new application from the beginning.</p>
         <form method="POST" id="rejectForm">
             <input type="hidden" name="action" value="reject">
             <input type="hidden" name="id" id="rejectRowId" value="">
@@ -681,7 +561,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                 setTimeout(function() {
                     alertBox.style.display = 'none';
                 }, 500);
-            }, 2000);
+            }, 3000);
         }
     });
 </script>

@@ -74,6 +74,30 @@ class ApplicationController {
     public function submitFullApplication() {
         $this->auth->requireLogin();
         $directAlloc = isDirectAllocationSession() ? $_SESSION['direct_alloc'] : null;
+
+        // >>> NEW: If the applicant clicked "Fix & Resubmit" on an application that
+        //          the Final Approver has since deleted, silently fall back to a
+        //          brand-new submission rather than failing.
+        //          NOTE: $isDirectAlloc is not yet defined at this point, so we
+        //          detect direct-allocation mode inline from POST to safely
+        //          skip the guard for FA-driven flows.
+        $incomingResubmitId = filter_input(INPUT_POST, 'resubmit_id', FILTER_VALIDATE_INT);
+        $isIncomingDirectAlloc = ($_POST['direct_alloc'] ?? '0') === '1'
+            && $directAlloc !== null
+            && (int)($_SESSION['role_id'] ?? 0) === 7;
+        if ($incomingResubmitId && !$isIncomingDirectAlloc) {
+            $existsConn = getDBConnection();
+            $existsStmt = $existsConn->prepare("SELECT id FROM applications WHERE id = ? LIMIT 1");
+            $existsStmt->bind_param('i', $incomingResubmitId);
+            $existsStmt->execute();
+            $rowExists = $existsStmt->get_result()->num_rows > 0;
+            $existsStmt->close();
+            $existsConn->close();
+            if (!$rowExists) {
+                $_POST['resubmit_id'] = 0;   // let the normal INSERT path run
+            }
+        }
+
         $isDirectAlloc = $directAlloc !== null
             && (int)($_SESSION['role_id'] ?? 0) === 7
             && ($_POST['direct_alloc'] ?? '0') === '1'

@@ -209,6 +209,36 @@ class Application {
         return $row ?: null;
     }
 
+    // >>> NEW: used by the applicant's View Status page to detect
+    //          "the Final Approver just rejected my application".
+    //          The application row itself will have been deleted, so we look
+    //          at the notifications table for the marker title we insert on
+    //          rejection in appli_approve_FA.php.
+    public function hasUnseenFARejection($nic) {
+        $sql = "SELECT message, created_at
+                  FROM notifications
+                 WHERE nic = ?
+                   AND title = 'Application Rejected by Final Approval'
+                   AND is_read = 0
+                 ORDER BY id DESC
+                 LIMIT 1";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->bind_param("s", $nic);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $row ?: null;
+    }
+
+    // >>> NEW: convenience wrapper that the View Status page will use
+    //          to fetch the latest application ONLY if it still exists.
+    //          Returns null when the FA has deleted it.
+    public function findLatestForNic($nic) {
+        return $this->findByNic($nic);   // already exists; alias for clarity
+    }
+
+
+
     public function __destruct() {
         if ($this->conn) {
             $this->conn->close();

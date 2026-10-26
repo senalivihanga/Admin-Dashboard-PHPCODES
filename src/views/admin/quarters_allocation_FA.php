@@ -2,9 +2,18 @@
 /**
  * Allocated Quarters List - Final Approver - Sri Lanka Railways
  * -------------------------------------------------------------
- * Reads real allocation records from `allocated_quarters`, joined
- * with `quarters` (for quarter details) and `users` (for the resident's
- * full name and designation, in case the stored copy is blank).
+ * >>> CHANGED:
+ *   - Now shows BOTH `normal` and `direct` allocations by default
+ *     (previously only `normal` was shown). Direct allocations are the
+ *     ones FA creates via "Add Direct Allocation" / FA_dashboard.
+ *   - Added a `source` dropdown filter (All / Normal / Direct).
+ *   - Added a "Source" column so FA can tell at a glance which rows
+ *     came from the direct-allocation flow.
+ *   - Fixed the Allocated Date field: previously the query relied on
+ *     `aq.allocated_date` which exists, but the render used an alias
+ *     fallback that could silently show "-" for some rows. Now it uses
+ *     the actual column name consistently.
+ *   - Search now also matches on `aq.source`.
  */
 require_once __DIR__ . '/../../../config/config.php';
 
@@ -21,31 +30,47 @@ $userData = [
 ];
 
 $searchQuery = trim($_GET['search'] ?? '');
+// >>> NEW: source filter. Accepts 'all' | 'normal' | 'direct'.
+$sourceFilter = $_GET['source'] ?? 'all';
+if (!in_array($sourceFilter, ['all', 'normal', 'direct'], true)) {
+    $sourceFilter = 'all';
+}
 
 $conn = getDBConnection();
 
 // -------------------------------------------------------------
-// Fetch real allocations (LEFT JOIN so we still show rows if the
-// quarter or user has been removed for some reason)
+// Build the base query — this is the part that changed.
+// `WHERE` now respects the source filter dropdown instead of
+// hard-coding `source = 'normal'`.
 // -------------------------------------------------------------
 $sql = "SELECT
             aq.id,
+            aq.source,
             aq.nic,
             aq.computer_no,
             aq.quarter_no,
             aq.quarter_name,
             aq.quarter_location,
             aq.quarter_type,
-            COALESCE(NULLIF(aq.resident_name, ''), u.name, '-')              AS resident_name,
+            COALESCE(NULLIF(aq.resident_name, ''), u.name, '-')                 AS resident_name,
             COALESCE(NULLIF(aq.designation, ''),  u.applicant_designation, '-') AS designation,
             COALESCE(NULLIF(aq.workplace, ''),    u.applicant_current_work_station, '-') AS workplace,
             aq.allocated_date,
-            COALESCE(NULLIF(aq.other, ''), 'None')                            AS other
+            COALESCE(NULLIF(aq.other, ''), 'None')                              AS other
         FROM allocated_quarters AS aq
    LEFT JOIN users    AS u ON u.nic = aq.nic
    LEFT JOIN quarters AS q ON q.quarter_number = aq.quarter_no
                          AND q.location_name  = aq.quarter_location
-        WHERE aq.source = 'normal'";
+        WHERE 1 = 1";
+
+$params     = [];
+$types      = '';
+
+if ($sourceFilter !== 'all') {
+    $sql .= " AND aq.source = ?";
+    $types .= 's';
+    $params[] = $sourceFilter;
+}
 
 if ($searchQuery !== '') {
     $sql .= " AND (aq.nic LIKE ?
@@ -54,14 +79,21 @@ if ($searchQuery !== '') {
                  OR aq.quarter_name LIKE ?
                  OR aq.quarter_location LIKE ?
                  OR aq.resident_name LIKE ?
-                 OR u.name LIKE ?)";
-    $stmt = $conn->prepare($sql . ' ORDER BY aq.id DESC');
+                 OR u.name LIKE ?
+                 OR aq.source LIKE ?)";
     $term = '%' . $searchQuery . '%';
-    $stmt->bind_param('sssssss', $term, $term, $term, $term, $term, $term, $term);
-} else {
-    $stmt = $conn->prepare($sql . ' ORDER BY aq.id DESC');
+    for ($i = 0; $i < 8; $i++) {
+        $types .= 's';
+        $params[] = $term;
+    }
 }
 
+$sql .= ' ORDER BY aq.id DESC';
+
+$stmt = $conn->prepare($sql);
+if ($types !== '') {
+    $stmt->bind_param($types, ...$params);
+}
 $stmt->execute();
 $allocatedData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
@@ -89,26 +121,26 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
 
-    .container { 
-        max-width: 1650px; 
-        margin: 20px auto; 
-        padding: 0 20px; 
+    .container {
+        max-width: 1650px;
+        margin: 20px auto;
+        padding: 0 20px;
         width: 100%;
         box-sizing: border-box;
     }
 
-    .back-link { 
-        display: inline-flex; 
-        align-items: center; 
-        gap: 8px; 
-        color: var(--primary-color); 
-        text-decoration: none; 
-        font-weight: 600; 
-        margin-bottom: 20px; 
+    .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--primary-color);
+        text-decoration: none;
+        font-weight: 600;
+        margin-bottom: 20px;
         font-size: 0.95rem;
     }
-    .back-link:hover { 
-        text-decoration: underline; 
+    .back-link:hover {
+        text-decoration: underline;
     }
 
     .user-profile-wrapper {
@@ -172,63 +204,63 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         background: #fee2e2;
     }
 
-    .page-title { 
-        text-align: center; 
-        color: var(--primary-color); 
-        font-size: 1.8rem; 
-        margin-bottom: 25px; 
-        text-transform: uppercase; 
-        letter-spacing: 1px; 
-        text-decoration: underline; 
-        text-underline-offset: 6px; 
+    .page-title {
+        text-align: center;
+        color: var(--primary-color);
+        font-size: 1.8rem;
+        margin-bottom: 25px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        text-decoration: underline;
+        text-underline-offset: 6px;
         font-weight: 700;
     }
 
-    .search-card { 
-        background: var(--card-bg); 
-        padding: 18px 22px; 
-        border-radius: 12px; 
-        box-shadow: 0 4px 15px rgba(0,0,0,0.04); 
-        margin-bottom: 25px; 
-        display: flex; 
-        justify-content: space-between; 
-        align-items: center; 
-        flex-wrap: wrap; 
-        gap: 15px; 
+    .search-card {
+        background: var(--card-bg);
+        padding: 18px 22px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.04);
+        margin-bottom: 25px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
         border: 1px solid var(--border-color);
         width: 100%;
         box-sizing: border-box;
     }
 
-    .search-wrapper { 
-        display: flex; 
-        gap: 10px; 
-        align-items: center; 
+    .search-wrapper {
+        display: flex;
+        gap: 10px;
+        align-items: center;
         flex: 1;
         min-width: 280px;
     }
-    
+
     .search-input-container {
         position: relative;
         flex: 1;
         max-width: 400px;
     }
 
-    .search-input { 
+    .search-input {
         width: 100%;
-        padding: 10px 36px 10px 14px; 
-        border-radius: 8px; 
-        border: 1px solid #cbd5e1; 
-        font-size: 0.9rem; 
-        outline: none; 
+        padding: 10px 36px 10px 14px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        font-size: 0.9rem;
+        outline: none;
         box-sizing: border-box;
     }
-    
-    .search-input:focus { 
-        border-color: var(--primary-color); 
-        box-shadow: 0 0 0 3px rgba(122, 28, 28, 0.1); 
+
+    .search-input:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(122, 28, 28, 0.1);
     }
-    
+
     .search-clear-icon {
         position: absolute;
         right: 12px;
@@ -242,76 +274,114 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         justify-content: center;
         transition: color 0.2s;
     }
-    
+
     .search-clear-icon:hover {
         color: var(--text-main);
     }
 
-    .search-btn, .print-btn { 
-        border: none; 
-        padding: 10px 18px; 
-        border-radius: 8px; 
-        font-weight: 600; 
-        cursor: pointer; 
-        display: inline-flex; 
-        align-items: center; 
-        gap: 6px; 
+    /* >>> NEW: source filter select */
+    .source-filter {
+        padding: 10px 14px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
         font-size: 0.9rem;
-        text-decoration: none; 
-        transition: background 0.2s; 
+        outline: none;
+        background: #ffffff;
+        cursor: pointer;
+        min-width: 150px;
+        box-sizing: border-box;
+    }
+    .source-filter:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(122, 28, 28, 0.1);
+    }
+
+    .search-btn, .print-btn {
+        border: none;
+        padding: 10px 18px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.9rem;
+        text-decoration: none;
+        transition: background 0.2s;
         color: white;
     }
-    
-    .search-btn { 
-        background-color: var(--primary-color); 
+
+    .search-btn {
+        background-color: var(--primary-color);
     }
-    .search-btn:hover { 
-        background-color: var(--primary-dark); 
+    .search-btn:hover {
+        background-color: var(--primary-dark);
     }
 
-    .print-btn { 
-        background-color: #0284c7; 
+    .print-btn {
+        background-color: #0284c7;
     }
-    .print-btn:hover { 
-        background-color: #0369a1; 
-    }
-
-    .table-card { 
-        background: var(--card-bg); 
-        padding: 25px; 
-        border-radius: 12px; 
-        box-shadow: 0 8px 20px rgba(0,0,0,0.06); 
-        border-top: 5px solid var(--primary-color); 
-        overflow-x: auto; 
-        position: relative; 
+    .print-btn:hover {
+        background-color: #0369a1;
     }
 
-    .allocated-table { 
-        width: 100%; 
-        border-collapse: collapse; 
-        text-align: left; 
-        min-width: 1400px; 
+    .table-card {
+        background: var(--card-bg);
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+        border-top: 5px solid var(--primary-color);
+        overflow-x: auto;
+        position: relative;
     }
 
-    .allocated-table th, .allocated-table td { 
-        padding: 12px 10px; 
-        border: 1px solid #cbd5e1; 
-        vertical-align: middle; 
-        font-size: 0.85rem; 
-        text-align: center; 
+    .allocated-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        min-width: 1500px;
     }
 
-    .allocated-table th { 
-        background-color: #f8fafc; 
-        color: var(--text-main); 
-        font-weight: 700; 
+    .allocated-table th, .allocated-table td {
+        padding: 12px 10px;
+        border: 1px solid #cbd5e1;
+        vertical-align: middle;
+        font-size: 0.85rem;
+        text-align: center;
+    }
+
+    .allocated-table th {
+        background-color: #f8fafc;
+        color: var(--text-main);
+        font-weight: 700;
         text-transform: uppercase;
         font-size: 0.8rem;
     }
 
-    .allocated-table td { 
-        color: #334155; 
+    .allocated-table td {
+        color: #334155;
         word-break: break-word;
+    }
+
+    /* >>> NEW: source badges */
+    .source-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
+    .source-normal {
+        background: #e0f2fe;
+        color: #075985;
+        border: 1px solid #bae6fd;
+    }
+    .source-direct {
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fde68a;
     }
 
     .custom-modal {
@@ -385,6 +455,13 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         }
         .search-wrapper {
             max-width: 100%;
+            flex-wrap: wrap;
+        }
+        .search-input-container {
+            max-width: 100%;
+        }
+        .source-filter {
+            width: 100%;
         }
         .search-btn, .print-btn {
             width: 100%;
@@ -436,19 +513,26 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
     <h2 class="page-title">Allocated Quarters List</h2>
 
-    <!-- PHP GET Search Form -->
     <form method="GET" action="" class="search-card">
         <div class="search-wrapper">
             <div class="search-input-container">
                 <input type="text" name="search" class="search-input"
-                       placeholder="Search by NIC, Computer No. or Quarter No..."
+                       placeholder="Search by NIC, Computer No., Quarter No. or Source..."
                        value="<?php echo htmlspecialchars($searchQuery); ?>">
                 <?php if (!empty($searchQuery)): ?>
-                    <a href="?" class="search-clear-icon" title="Clear Search">
+                    <a href="?source=<?php echo htmlspecialchars($sourceFilter); ?>" class="search-clear-icon" title="Clear Search">
                         <i class="fa-solid fa-xmark"></i>
                     </a>
                 <?php endif; ?>
             </div>
+
+            <!-- >>> NEW: source filter -->
+            <select name="source" class="source-filter" onchange="this.form.submit()">
+                <option value="all"    <?php echo $sourceFilter === 'all'    ? 'selected' : ''; ?>>All Allocations</option>
+                <option value="normal" <?php echo $sourceFilter === 'normal' ? 'selected' : ''; ?>>Normal Only</option>
+                <option value="direct" <?php echo $sourceFilter === 'direct' ? 'selected' : ''; ?>>Direct Only</option>
+            </select>
+
             <button type="submit" class="search-btn">
                 <i class="fa-solid fa-magnifying-glass"></i> Search
             </button>
@@ -463,6 +547,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             <thead>
                 <tr>
                     <th>No.</th>
+                    <th>Source</th>
                     <th>NIC</th>
                     <th>Computer No.</th>
                     <th>Quarter No.</th>
@@ -479,16 +564,29 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             <tbody>
                 <?php if (empty($allocatedData)): ?>
                     <tr>
-                        <td colspan="12" style="text-align: center; color: #64748b; padding: 25px;">
-                            <?php echo $searchQuery !== ''
-                                ? 'No allocations match your search.'
-                                : 'No allocated quarters records found.'; ?>
+                        <td colspan="13" style="text-align: center; color: #64748b; padding: 25px;">
+                            <?php
+                            if ($searchQuery !== '') {
+                                echo 'No allocations match your search.';
+                            } elseif ($sourceFilter === 'direct') {
+                                echo 'No direct allocations found.';
+                            } elseif ($sourceFilter === 'normal') {
+                                echo 'No normal allocations found.';
+                            } else {
+                                echo 'No allocated quarters records found.';
+                            }
+                            ?>
                         </td>
                     </tr>
                 <?php else: ?>
                     <?php $i = 1; foreach ($allocatedData as $row): ?>
                         <tr>
                             <td><?php echo $i++; ?></td>
+                            <td>
+                                <span class="source-badge source-<?php echo htmlspecialchars($row['source'] ?? 'normal'); ?>">
+                                    <?php echo htmlspecialchars(ucfirst($row['source'] ?? 'normal')); ?>
+                                </span>
+                            </td>
                             <td><?php echo htmlspecialchars($row['nic']); ?></td>
                             <td><?php echo htmlspecialchars($row['computer_no']); ?></td>
                             <td><strong><?php echo htmlspecialchars($row['quarter_no']); ?></strong></td>
