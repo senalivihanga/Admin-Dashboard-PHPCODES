@@ -139,9 +139,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                             </td>
                             <td class="p-3.5 border border-slate-300 text-slate-700 text-center text-xs">
                                 <div class="flex justify-center gap-1.5">
-                                    <a href="<?php echo baseUrl('admin/view_system_user.php') . '?nic=' . urlencode($row['nic']); ?>"
-                                       class="px-3 py-1.5 rounded bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold inline-flex items-center no-underline"
-                                       title="View"><i class="fa-solid fa-eye"></i></a>
                                     <a href="<?php echo baseUrl('admin/edit_system_user.php') . '?nic=' . urlencode($row['nic']); ?>"
                                        class="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold inline-flex items-center no-underline"
                                        title="Edit"><i class="fa-solid fa-pen"></i></a>

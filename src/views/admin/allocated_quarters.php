@@ -418,7 +418,8 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 <?php endif; ?>
 
 <main class="approval-container">
-    <a href="FA_dashboard.php" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
+    <main class="approval-container">
+    <a href="<?php echo baseUrl(roleHomePath(currentRoleId() ?: 2)); ?>" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
 
     <div class="approval-header">
         <h2>Allocated Quarters List</h2>

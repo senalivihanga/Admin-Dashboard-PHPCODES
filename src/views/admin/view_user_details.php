@@ -171,7 +171,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     </a>
 
     <div class="card-box">
-        <h2><i class="fa-solid fa-circle-info"></i> User Detailed View</h2>
+        <h2>User Detailed View</h2>
 
         <?php if (!empty($errorMessage)): ?>
             <div class="error-box">
