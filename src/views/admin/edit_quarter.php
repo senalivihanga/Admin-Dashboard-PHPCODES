@@ -71,8 +71,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id
         );
 
-        if ($stmt->execute()) {
+                if ($stmt->execute()) {
             $stmt->close();
+
+            // ---- Sync with maintenance table ----
+            $maintenanceTypes = [
+                'Under Maintenance',
+                'Repair in Progress',
+                'Painting Pending',
+                'Electrical Work',
+            ];
+
+            if ($quarter_status === 'Under Maintenance') {
+                // Look for an existing maintenance row for this quarter
+                $chk = $conn->prepare(
+                    "SELECT id FROM maintenance
+                      WHERE quarter_number = ? AND location_name = ? LIMIT 1"
+                );
+                $chk->bind_param("ss", $quarter_number, $location_name);
+                $chk->execute();
+                $existing = $chk->get_result()->fetch_assoc();
+                $chk->close();
+
+                if ($existing) {
+                    // Update the description on the existing record
+                    $upd = $conn->prepare(
+                        "UPDATE maintenance
+                            SET quarter_name = ?, quarter_type = ?,
+                                maintenance_status = 'Under Maintenance'
+                          WHERE id = ?"
+                    );
+                    $upd->bind_param("ssi", $quarter_name, $quarter_type, $existing['id']);
+                    $upd->execute();
+                    $upd->close();
+                } else {
+                    // Insert a new maintenance record
+                    $ins = $conn->prepare(
+                        "INSERT INTO maintenance
+                            (quarter_number, quarter_name, location_name, quarter_type,
+                             maintenance_status, last_maintenance_date, notes)
+                         VALUES (?, ?, ?, ?, 'Under Maintenance', CURDATE(), NULL)"
+                    );
+                    $ins->bind_param(
+                        "ssss",
+                        $quarter_number, $quarter_name, $location_name, $quarter_type
+                    );
+                    $ins->execute();
+                    $ins->close();
+                }
+            } else {
+                // No longer under maintenance → remove any matching row
+                $del = $conn->prepare(
+                    "DELETE FROM maintenance
+                      WHERE quarter_number = ? AND location_name = ?"
+                );
+                $del->bind_param("ss", $quarter_number, $location_name);
+                $del->execute();
+                $del->close();
+            }
+            // ---- End sync ----
+
             $conn->close();
             header('Location: ' . baseUrl('admin/quarters_list.php'));
             exit;

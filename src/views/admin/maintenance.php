@@ -55,7 +55,8 @@ $maintenanceData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 $conn->close();
 
-$flash = (($_GET['msg'] ?? '') === 'deleted') ? 'Maintenance record deleted successfully.' : '';
+$flash = (($_GET['msg'] ?? '') === 'deleted') ? 'Maintenance record deleted successfully.'
+       : ((($_GET['msg'] ?? '') === 'added') ? 'Maintenance record added successfully.' : '');
 
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>

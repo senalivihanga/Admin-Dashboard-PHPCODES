@@ -8,6 +8,9 @@ require_once __DIR__ . '/../../config/config.php';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Railway Quarter Management System - AOT</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
@@ -17,7 +20,7 @@ require_once __DIR__ . '/../../config/config.php';
 </head>
 
 <body class="h-screen w-full flex justify-center items-center relative bg-cover bg-center bg-no-repeat font-sans overflow-hidden"
-      style="background-image: url('<?php echo assetUrl('images/train.jpg'); ?>');">
+      style="font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-image: url('<?php echo assetUrl('images/train.jpg'); ?>');">
 
     <!-- Darker Overlay -->
     <div class="absolute inset-0 bg-gradient-to-r from-black/70 via-black/55 to-black/70 z-0"></div>

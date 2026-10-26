@@ -84,8 +84,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $old['has_water']
         );
 
-        if ($stmt->execute()) {
+                if ($stmt->execute()) {
             $stmt->close();
+
+            // ---- Sync maintenance table on new quarter ----
+            if ($old['quarter_status'] === 'Under Maintenance') {
+                $ins = $conn->prepare(
+                    "INSERT INTO maintenance
+                        (quarter_number, quarter_name, location_name, quarter_type,
+                         maintenance_status, last_maintenance_date, notes)
+                     VALUES (?, ?, ?, ?, 'Under Maintenance', CURDATE(), NULL)"
+                );
+                $ins->bind_param(
+                    "ssss",
+                    $old['quarter_number'], $old['quarter_name'],
+                    $old['location_name'], $old['quarter_type']
+                );
+                $ins->execute();
+                $ins->close();
+            }
+            // ---- End sync ----
+
             $conn->close();
             header('Location: ' . baseUrl('admin/quarters_list.php'));
             exit;

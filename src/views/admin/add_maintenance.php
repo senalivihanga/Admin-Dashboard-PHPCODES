@@ -16,6 +16,68 @@ $userData = [
     'initials' => 'SC'
 ];
 
+$error   = '';
+$success = '';
+
+// Preserve old values on validation error
+$old = [
+    'quarterNum'  => '',
+    'quarterName' => '',
+    'location'    => '',
+    'quarterType' => '',
+    'status'      => 'Under Maintenance',
+    'lastMaint'   => '',
+    'notes'       => ''
+];
+
+// Handle form submit -> INSERT into `maintenance`
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    foreach ($old as $k => $v) {
+        if (isset($_POST[$k])) {
+            $old[$k] = trim((string)$_POST[$k]);
+        }
+    }
+
+    if ($old['quarterNum'] === '' || $old['location'] === '' || $old['quarterType'] === '' || $old['status'] === '') {
+        $error = 'Quarter No., Location, Quarter Type, and Status are required.';
+    } elseif (!in_array($old['status'], ['Under Maintenance', 'Repair in Progress', 'Painting Pending', 'Electrical Work', 'Available', 'Occupied'], true)) {
+        $error = 'Please select a valid status.';
+    } else {
+        $conn = getDBConnection();
+        $stmt = $conn->prepare(
+            "INSERT INTO maintenance
+                (quarter_number, quarter_name, location_name, quarter_type,
+                 maintenance_status, last_maintenance_date, notes)
+             VALUES (?, ?, ?, ?, ?, ?, ?)"
+        );
+
+        $lastMaint = $old['lastMaint'] !== '' ? $old['lastMaint'] : null;
+        $notes     = $old['notes']     !== '' ? $old['notes']     : null;
+
+        $stmt->bind_param(
+            "sssssss",
+            $old['quarterNum'],
+            $old['quarterName'],
+            $old['location'],
+            $old['quarterType'],
+            $old['status'],
+            $lastMaint,
+            $notes
+        );
+
+        if ($stmt->execute()) {
+            $stmt->close();
+            $conn->close();
+            header('Location: ' . baseUrl('admin/maintenance.php?msg=added'));
+            exit;
+        }
+
+        $error = 'Insert failed: ' . $conn->error;
+        $stmt->close();
+        $conn->close();
+    }
+}
+
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
 <style>
@@ -29,7 +91,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     }
 
     .container { 
-        max-width: 1050px; /* Box එකේ ප්‍රමාණය (Width) වැඩි කරන ලදී */
+        max-width: 1050px;
         margin: 20px auto; 
         padding: 0 20px; 
         width: 100%;
@@ -52,13 +114,13 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     .form-group.full-width { grid-column: span 2; }
     
     .form-group label { display: block; font-weight: 600; margin-bottom: 8px; color: #334155; font-size: 0.85rem; }
-    .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; box-sizing: border-box; outline: none; background-color: #ffffff; }
-    .form-group input:focus, .form-group select:focus { border-color: #7A1C1C; box-shadow: 0 0 0 3px rgba(122, 28, 28, 0.1); }
+    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; box-sizing: border-box; outline: none; background-color: #ffffff; }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: #7A1C1C; box-shadow: 0 0 0 3px rgba(122, 28, 28, 0.1); }
     
     .form-actions {
         grid-column: span 2;
         display: flex;
-        justify-content: center; /* බොත්තම මැදට (Center) කිරීම සඳහා */
+        justify-content: center;
         margin-top: 15px;
     }
 
@@ -139,6 +201,20 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         background: #fee2e2;
     }
 
+    .alert {
+        grid-column: span 2;
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-weight: 600;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    .alert-error {
+        background-color: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fecaca;
+    }
+
     .custom-modal {
         display: none;
         position: fixed;
@@ -212,7 +288,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             grid-template-columns: 1fr; 
             gap: 15px;
         }
-        .form-group.full-width, .form-actions { 
+        .form-group.full-width, .form-actions, .alert { 
             grid-column: span 1; 
         }
         .form-actions {
@@ -249,43 +325,55 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
     <div class="form-container">
         <h2 style="color: #0a0a0a; margin-bottom: 25px; text-align: center; font-size: 1.6rem; font-weight: 700;">Add Quarter Under Maintenance</h2>
-        <form id="addMaintenanceForm" class="form-grid">
+
+        <form method="POST" action="" class="form-grid">
+            <?php if ($error): ?>
+                <div class="alert alert-error"><i class="fa-solid fa-triangle-exclamation"></i> <?php echo htmlspecialchars($error); ?></div>
+            <?php endif; ?>
+
             <div class="form-group">
                 <label for="quarterNum">Quarter No.</label>
-                <input type="text" id="quarterNum" name="quarterNum" placeholder="Enter quarter number" required>
+                <input type="text" id="quarterNum" name="quarterNum" placeholder="Enter quarter number" required
+                       value="<?php echo htmlspecialchars($old['quarterNum']); ?>">
             </div>
             <div class="form-group">
                 <label for="quarterName">Quarter Name</label>
-                <input type="text" id="quarterName" name="quarterName" placeholder="Enter quarter name">
+                <input type="text" id="quarterName" name="quarterName" placeholder="Enter quarter name"
+                       value="<?php echo htmlspecialchars($old['quarterName']); ?>">
             </div>
             <div class="form-group">
                 <label for="location">Quarter Location</label>
-                <input type="text" id="location" name="location" placeholder="Enter quarter location" required>
+                <input type="text" id="location" name="location" placeholder="Enter quarter location" required
+                       value="<?php echo htmlspecialchars($old['location']); ?>">
             </div>
             <div class="form-group">
                 <label for="quarterType">Quarter Type</label>
                 <select id="quarterType" name="quarterType" required>
                     <option value="">-- Select Quarter Type --</option>
-                    <option value="Bungalows">Bungalows</option>
-                    <option value="Type I">Type I</option>
-                    <option value="Type II">Type II</option>
-                    <option value="Type III">Type III</option>
+                    <?php foreach (['Bungalows','Type I','Type II','Type III','Single','Double','Row','Flats','Line','Gateman'] as $t): ?>
+                        <option value="<?php echo $t; ?>" <?php echo $old['quarterType'] === $t ? 'selected' : ''; ?>><?php echo $t; ?></option>
+                    <?php endforeach; ?>
                 </select>
             </div>
             <div class="form-group">
                 <label for="status">Status</label>
                 <select id="status" name="status" required>
-                    <option value="Under Maintenance" selected>Under Maintenance</option>
-                    <option value="Available">Available</option>
-                    <option value="Occupied">Occupied</option>
+                    <?php foreach (['Under Maintenance','Repair in Progress','Painting Pending','Electrical Work'] as $s): ?>
+                        <option value="<?php echo $s; ?>" <?php echo $old['status'] === $s ? 'selected' : ''; ?>><?php echo $s; ?></option>
+                    <?php endforeach; ?>
                 </select>
             </div>
             <div class="form-group">
                 <label for="lastMaint">Last Maintenance Date</label>
-                <input type="date" id="lastMaint" name="lastMaint" required>
+                <input type="date" id="lastMaint" name="lastMaint"
+                       value="<?php echo htmlspecialchars($old['lastMaint']); ?>">
+            </div>
+            <div class="form-group full-width">
+                <label for="notes">Notes (optional)</label>
+                <textarea id="notes" name="notes" rows="3" placeholder="Additional maintenance notes"><?php echo htmlspecialchars($old['notes']); ?></textarea>
             </div>
             <div class="form-actions">
-                <button type="submit" class="btn-submit">Save Maintenance Record</button>
+                <button type="submit" class="btn-submit"><i class="fa-solid fa-floppy-disk"></i> Save Maintenance Record</button>
             </div>
         </form>
     </div>
@@ -336,55 +424,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     function executeLogout() {
         window.location.href = "login.php";
     }
-
-    document.getElementById('addMaintenanceForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-
-        const newMaintenance = {
-            quarterNum: document.getElementById('quarterNum').value.trim(),
-            quarterName: document.getElementById('quarterName').value.trim(),
-            location: document.getElementById('location').value.trim(),
-            quarterType: document.getElementById('quarterType').value,
-            status: document.getElementById('status').value,
-            lastMaint: document.getElementById('lastMaint').value
-        };
-
-        const defaultMaintenanceData = [
-            {
-                quarterNum: "Q-01",
-                quarterName: "Bungalow A",
-                location: "Colombo",
-                quarterType: "Bungalows",
-                status: "Under Maintenance",
-                lastMaint: "2025-05-12"
-            },
-            {
-                quarterNum: "Q-03",
-                quarterName: "Staff Flat",
-                location: "Galle",
-                quarterType: "Type I",
-                status: "Under Maintenance",
-                lastMaint: "2025-06-05"
-            }
-        ];
-
-        let storedData = null;
-        try {
-            const data = localStorage.getItem('maintenanceData_v2');
-            storedData = data ? JSON.parse(data) : null;
-        } catch (err) {
-            storedData = null;
-        }
-
-        if (!Array.isArray(storedData) || storedData.length === 0) {
-            storedData = [...defaultMaintenanceData];
-        }
-
-        storedData.push(newMaintenance);
-        localStorage.setItem('maintenanceData_v2', JSON.stringify(storedData));
-
-        window.location.href = 'maintenance.php';
-    });
 </script>
 
 <?php
