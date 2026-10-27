@@ -88,22 +88,36 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     </h2>
 
     <!-- Search / Add -->
-    <div class="flex justify-between items-center mb-6 flex-wrap gap-4">
-        <form method="GET" action="" class="flex gap-2 flex-grow max-w-[480px] w-full">
-            <input type="text" name="search"
+<div class="flex justify-between items-center mb-6 flex-wrap gap-4">
+    <form method="GET" action="" class="flex gap-2 flex-grow max-w-[480px] w-full">
+        <div class="relative flex-grow">
+            <input type="text" name="search" id="searchInput"
                    value="<?php echo htmlspecialchars($searchQuery); ?>"
                    placeholder="Search by NIC, Name or Email..."
-                   class="flex-grow px-4 py-2.5 border border-slate-300 rounded-lg outline-none text-sm bg-white">
-            <button type="submit"
-                    class="bg-[#7A1C1C] hover:bg-[#631616] text-white border-none px-5 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition cursor-pointer">
-                <i class="fa-solid fa-magnifying-glass"></i> Search
-            </button>
-        </form>
-        <a href="<?php echo baseUrl('admin/add_system_user.php'); ?>"
-           class="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg font-semibold text-sm transition inline-flex items-center justify-center gap-2 no-underline shadow-sm">
-            <i class="fa-solid fa-user-plus"></i> Add New User
-        </a>
-    </div>
+                   oninput="if (this.value.trim() === '') this.form.submit();"
+                   class="w-full px-4 py-2.5 pr-10 border border-slate-300 rounded-lg outline-none text-sm bg-white">
+
+            <?php if ($searchQuery !== ''): ?>
+                <button type="button"
+                        onclick="this.form.search.value=''; this.form.submit();"
+                        title="Clear search"
+                        class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 bg-transparent border-none cursor-pointer">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            <?php endif; ?>
+        </div>
+
+        <button type="submit"
+                class="bg-[#7A1C1C] hover:bg-[#631616] text-white border-none px-5 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition cursor-pointer">
+            <i class="fa-solid fa-magnifying-glass"></i> Search
+        </button>
+    </form>
+
+    <a href="<?php echo baseUrl('admin/add_system_user.php'); ?>"
+       class="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg font-semibold text-sm transition inline-flex items-center justify-center gap-2 no-underline shadow-sm">
+        <i class="fa-solid fa-user-plus"></i> Add New User
+    </a>
+</div>
 
     <!-- Table -->
     <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-[#7A1C1C] overflow-x-auto">
