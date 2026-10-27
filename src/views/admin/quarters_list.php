@@ -1,7 +1,7 @@
 <?php
 /**
  * Quarters List - Sri Lanka Railways Admin
- * DB-driven version
+ * DB-driven version with pagination (4 rows per page)
  */
 require_once __DIR__ . '/../../../config/config.php';
 
@@ -17,11 +17,11 @@ $userData = [
     'initials' => 'SC'
 ];
 
-// --- Fetch all quarters (from quarters + legacy maintenance-only rows) ---
+// --- Fetch all quarters (from quarters + legacy maintenance-only rows) with pagination ---
 $conn = getDBConnection();
 $quarters = [];
 
-$sql = "
+$baseSql = "
     SELECT
         q.id,
         q.quarter_number,
@@ -62,11 +62,27 @@ $sql = "
         WHERE q2.quarter_number = m.quarter_number
           AND q2.location_name  = m.location_name
     )
-
-    ORDER BY location_name ASC, quarter_number ASC
 ";
 
-$result = $conn->query($sql);
+// ------- Pagination settings -------
+$rowsPerPage = 4;
+$currentPage = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+
+$countResult = $conn->query("SELECT COUNT(*) AS total FROM ($baseSql) AS combined");
+$totalRows   = (int)($countResult->fetch_assoc()['total'] ?? 0);
+$totalPages  = max(1, (int)ceil($totalRows / $rowsPerPage));
+
+if ($currentPage > $totalPages) {
+    $currentPage = $totalPages;
+}
+$offset = ($currentPage - 1) * $rowsPerPage;
+
+$pagedSql = $baseSql . "
+    ORDER BY location_name ASC, quarter_number ASC
+    LIMIT {$rowsPerPage} OFFSET {$offset}
+";
+
+$result = $conn->query($pagedSql);
 if ($result && $result->num_rows > 0) {
     while ($row = $result->fetch_assoc()) {
         $quarters[] = $row;
@@ -426,6 +442,73 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     .btn-modal-confirm { background-color: #ef4444; }
     .btn-modal-cancel { background-color: #64748b; }
 
+    /* ============ Pagination ============ */
+    .pagination-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid #e2e8f0;
+    }
+    .pagination-info {
+        font-size: 0.85rem;
+        color: #475569;
+    }
+    .pagination-info strong {
+        color: #1e293b;
+        font-weight: 700;
+    }
+    .pagination-links {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+    .pg-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 36px;
+        height: 36px;
+        padding: 0 12px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        background: #ffffff;
+        color: #334155;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-decoration: none;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        user-select: none;
+    }
+    .pg-btn:hover:not(.disabled):not(.active) {
+        background: #f1f5f9;
+        border-color: #7A1C1C;
+        color: #7A1C1C;
+    }
+    .pg-btn.active {
+        background: #7A1C1C;
+        border-color: #7A1C1C;
+        color: #ffffff;
+        cursor: default;
+    }
+    .pg-btn.disabled {
+        background: #f8fafc;
+        color: #94a3b8;
+        cursor: not-allowed;
+        border-color: #e2e8f0;
+    }
+    .pg-dots {
+        color: #94a3b8;
+        font-weight: 700;
+        padding: 0 4px;
+        user-select: none;
+    }
+
     @media print {
         @page { size: landscape; margin: 10mm; }
         body { background-color: #ffffff; color: #000000; font-size: 9pt; }
@@ -437,6 +520,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         .quarters-table { width: 100% !important; min-width: 100% !important; border: 1px solid #000000; }
         .quarters-table th, .quarters-table td { border: 1px solid #000000; padding: 4px 3px; color: #000000; font-weight: normal; text-align: center; }
         .quarters-table th { background-color: #f0f0f0 !important; color: #000000 !important; }
+        .pagination-bar { display: none !important; }
     }
 
     @media (max-width: 768px) {
@@ -457,6 +541,16 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         .btn-group > * {
             flex: 1;
             justify-content: center;
+        }
+        .pagination-bar {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .pagination-links {
+            justify-content: center;
+        }
+        .pagination-info {
+            text-align: center;
         }
     }
 </style>
@@ -546,7 +640,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                                     : '<span class="badge badge-inactive"><i class="fa-solid fa-droplet"></i> Unavailable</span>';
                             ?>
                             <tr>
-                                <td><?php echo $index + 1; ?></td>
+                                <td><?php echo $offset + $index + 1; ?></td>
                                 <td><?php echo htmlspecialchars($item['quarter_number'] ?? 'N/A'); ?></td>
                                 <td><?php echo htmlspecialchars($item['quarter_name'] ?? 'N/A'); ?></td>
                                 <td><?php echo htmlspecialchars($item['quarter_division'] ?? 'N/A'); ?></td>
@@ -580,6 +674,68 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                 </tbody>
             </table>
         </div>
+
+        <?php if ($totalPages > 1): ?>
+        <div class="pagination-bar">
+            <div class="pagination-info">
+                Showing
+                <strong><?php echo $offset + 1; ?></strong>–<strong><?php echo min($offset + $rowsPerPage, $totalRows); ?></strong>
+                of <strong><?php echo $totalRows; ?></strong> quarters
+            </div>
+
+            <div class="pagination-links">
+                <?php
+                $queryParams = $_GET;
+
+                if ($currentPage > 1):
+                    $queryParams['page'] = $currentPage - 1;
+                ?>
+                    <a href="?<?php echo htmlspecialchars(http_build_query($queryParams)); ?>"
+                       class="pg-btn" title="Previous">&laquo; Prev</a>
+                <?php else: ?>
+                    <span class="pg-btn disabled">&laquo; Prev</span>
+                <?php endif; ?>
+
+                <?php
+                $windowSize = 5;
+                $start = max(1, $currentPage - 2);
+                $end   = min($totalPages, $start + $windowSize - 1);
+                $start = max(1, $end - $windowSize + 1);
+
+                if ($start > 1):
+                    $queryParams['page'] = 1;
+                ?>
+                    <a href="?<?php echo htmlspecialchars(http_build_query($queryParams)); ?>" class="pg-btn">1</a>
+                    <?php if ($start > 2): ?><span class="pg-dots">…</span><?php endif; ?>
+                <?php endif; ?>
+
+                <?php for ($p = $start; $p <= $end; $p++): ?>
+                    <?php $queryParams['page'] = $p; ?>
+                    <?php if ($p === $currentPage): ?>
+                        <span class="pg-btn active"><?php echo $p; ?></span>
+                    <?php else: ?>
+                        <a href="?<?php echo htmlspecialchars(http_build_query($queryParams)); ?>"
+                           class="pg-btn"><?php echo $p; ?></a>
+                    <?php endif; ?>
+                <?php endfor; ?>
+
+                <?php if ($end < $totalPages): ?>
+                    <?php if ($end < $totalPages - 1): ?><span class="pg-dots">…</span><?php endif; ?>
+                    <?php $queryParams['page'] = $totalPages; ?>
+                    <a href="?<?php echo htmlspecialchars(http_build_query($queryParams)); ?>" class="pg-btn"><?php echo $totalPages; ?></a>
+                <?php endif; ?>
+
+                <?php if ($currentPage < $totalPages):
+                    $queryParams['page'] = $currentPage + 1;
+                ?>
+                    <a href="?<?php echo htmlspecialchars(http_build_query($queryParams)); ?>"
+                       class="pg-btn" title="Next">Next &raquo;</a>
+                <?php else: ?>
+                    <span class="pg-btn disabled">Next &raquo;</span>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -642,7 +798,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         window.location.href = "login.php";
     }
 
-    // Search filter (client-side only)
+    // Search filter (client-side only, applies to the currently visible page)
     function searchTable() {
         const input = document.getElementById("searchInput");
         const filter = input.value.toLowerCase().trim();
@@ -704,12 +860,12 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
     document.getElementById('confirmDeleteBtn').addEventListener('click', () => {
         if (deleteTargetId !== null) {
-            // Redirect to delete handler (create delete_quarter.php to process deletion)
-            window.location.href = 'delete_quarter.php?id=' + deleteTargetId;
+            window.location.href = 'delete_quarter.php?id=' + deleteTargetId
+                                 + '&page=<?php echo (int)$currentPage; ?>';
         }
     });
 
-    // Show toast if deletion success flag is set (e.g., via query param)
+    // Show toast if deletion success flag is set
     (function() {
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('deleted') === '1') {
@@ -720,7 +876,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             }, 2200);
             // Clean the URL so refresh doesn't re-show
             if (window.history.replaceState) {
-                const newUrl = window.location.pathname;
+                const newUrl = window.location.pathname + (window.location.search || '');
                 window.history.replaceState({}, document.title, newUrl);
             }
         }
