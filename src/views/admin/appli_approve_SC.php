@@ -546,8 +546,27 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
 <script>
     document.addEventListener("DOMContentLoaded", function() {
-        const alertBox = document.getElementById('systemAlert');
-        if (alertBox) {
+            const searchInput = document.querySelector('.search-input');
+            const clearSearch = document.querySelector('.search-clear-icon');
+
+            if (searchInput) {
+                searchInput.addEventListener('input', function() {
+                    if (this.value.trim() === '') {
+                        this.form.submit();
+                    }
+                });
+            }
+
+            if (searchInput && clearSearch) {
+                clearSearch.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    searchInput.value = '';
+                    searchInput.form.submit();
+                });
+            }
+
+            const alertBox = document.getElementById('systemAlert');
+            if (alertBox) {
             setTimeout(function() {
                 alertBox.style.opacity = '0';
                 setTimeout(function() {

@@ -226,9 +226,8 @@ include __DIR__ . '/../layouts/header.php';
                             <button type="button" class="back-btn-top" onclick="window.location.href='<?php echo baseUrl('application/select-language?type=single'); ?>'">&laquo; Back </button>
                         </div>
                         <div class="office-use-box">
-                            <div class="office-title">*** FOR OFFICE USE ONLY ***</div>
                             <div class="office-field">
-                                <label>Date Received:</label>
+                                <label>Date:</label>
                                 <input type="date" name="office_received_date" class="form-input-date-sm">
                             </div>
                         </div>
@@ -946,7 +945,7 @@ include __DIR__ . '/../layouts/header.php';
                             <div style="display: flex; justify-content: space-between; margin-top: 20px; align-items: flex-end;">
                                 <div>
                                     <label style="display: block; margin-bottom: 5px;">Date :</label>
-                                    <input type="date" class="form-input-date" style="width: 180px;">
+                                    <input type="text" class="form-input-date" style="width: 180px;">
                                 </div>
                                 <div style="text-align: right;">
                                     <div style="border-bottom: 1px dotted #333; width: 280px; display: inline-block; margin-bottom: 5px;"></div>
@@ -976,7 +975,7 @@ include __DIR__ . '/../layouts/header.php';
 
                             <div style="margin-bottom: 15px;">
                                 <label>II. If yes, Date of expiry of disciplinary order :</label>
-                                <input type="date" name="clerk_forfeit_expiry_date" class="form-input-date" style="margin-top: 5px;">
+                                <input type="text" name="clerk_forfeit_expiry_date" class="form-input-date" style="margin-top: 5px;">
                             </div>
 
                             <div style="margin-bottom: 15px;">

@@ -369,7 +369,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             <div class="form-grid">
                 <div class="form-group">
                     <label>Application Number (Enter first)</label>
-                    <input type="text" id="appNo" placeholder="e.g. 0001" oninput="autoFillApplicant(this.value)" required>
+                    <input type="text" id="appNo" placeholder="e.g. SLR/AOT/2026/0001" oninput="autoFillApplicant(this.value)" required>
                 </div>
                 <div class="form-group">
                     <label>Applicant NIC</label>
@@ -437,8 +437,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         </div>
 
         <div style="margin-bottom: 20px; font-size: 12pt;">
-            <strong>The Chairman / Members,</strong><br>
-            Board of Directors / Housing Board (BDF),<br>
+            Building Department Foreman (BDF),<br>
             Sri Lanka Railways, Colombo 10.
         </div>
 

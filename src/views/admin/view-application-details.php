@@ -176,10 +176,10 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         </p>
 
         <div class="va-status-row">
-            <div><span class="label">Boss</span> <?php echo statusBadge($app['boss_status'] ?? 'pending'); ?></div>
+            <div><span class="label">Immediate Boss</span> <?php echo statusBadge($app['boss_status'] ?? 'pending'); ?></div>
             <div><span class="label">Personal File</span> <?php echo statusBadge($app['file_status'] ?? 'pending'); ?></div>
-            <div><span class="label">Clerk</span> <?php echo statusBadge($app['clerk_status'] ?? 'pending'); ?></div>
-            <div><span class="label">Final</span> <?php echo statusBadge($app['final_status'] ?? 'pending'); ?></div>
+            <div><span class="label">Subject Clerk</span> <?php echo statusBadge($app['clerk_status'] ?? 'pending'); ?></div>
+            <div><span class="label">Final Approval</span> <?php echo statusBadge($app['final_status'] ?? 'pending'); ?></div>
             <div><span class="label">Overall</span> <?php echo statusBadge($app['application_status'] ?? 'pending'); ?></div>
         </div>
 
