@@ -17,10 +17,55 @@ $userData = [
     'initials' => 'SC'
 ];
 
-// --- Fetch all quarters from DB (ordered by id) ---
+// --- Fetch all quarters (from quarters + legacy maintenance-only rows) ---
 $conn = getDBConnection();
 $quarters = [];
-$sql = "SELECT * FROM quarters ORDER BY id ASC";
+
+$sql = "
+    SELECT
+        q.id,
+        q.quarter_number,
+        q.quarter_name,
+        q.location_name,
+        q.quarter_address,
+        q.quarter_type,
+        q.quarter_division,
+        q.quarter_ownership,
+        q.quarter_area,
+        q.quarter_assessment_rent,
+        q.quarter_status,
+        q.has_electricity,
+        q.has_water,
+        q.sort_order
+    FROM quarters AS q
+
+    UNION ALL
+
+    SELECT
+        NULL                              AS id,
+        m.quarter_number                  AS quarter_number,
+        m.quarter_name                    AS quarter_name,
+        m.location_name                   AS location_name,
+        NULL                              AS quarter_address,
+        m.quarter_type                    AS quarter_type,
+        NULL                              AS quarter_division,
+        NULL                              AS quarter_ownership,
+        NULL                              AS quarter_area,
+        0                                 AS quarter_assessment_rent,
+        'Under Maintenance'               AS quarter_status,
+        0                                 AS has_electricity,
+        0                                 AS has_water,
+        0                                 AS sort_order
+    FROM maintenance AS m
+    WHERE NOT EXISTS (
+        SELECT 1 FROM quarters q2
+        WHERE q2.quarter_number = m.quarter_number
+          AND q2.location_name  = m.location_name
+    )
+
+    ORDER BY location_name ASC, quarter_number ASC
+";
+
 $result = $conn->query($sql);
 if ($result && $result->num_rows > 0) {
     while ($row = $result->fetch_assoc()) {
@@ -519,11 +564,15 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                                     </div>
                                 </td>
                                 <td>
-                                    <div class="action-cell">
-                                        <a href="view_quarters_list.php?id=<?php echo (int)$item['id']; ?>" class="action-btn btn-view" title="View"><i class="fa-solid fa-eye"></i></a>
-                                        <a href="edit_quarter.php?id=<?php echo (int)$item['id']; ?>" class="action-btn btn-edit" title="Edit"><i class="fa-solid fa-pen-to-square"></i></a>
-                                        <button class="action-btn btn-delete" onclick="promptDelete(<?php echo (int)$item['id']; ?>)" title="Delete"><i class="fa-solid fa-trash"></i></button>
-                                    </div>
+                                    <?php if (!empty($item['id'])): ?>
+                                        <div class="action-cell">
+                                            <a href="view_quarters_list.php?id=<?php echo (int)$item['id']; ?>" class="action-btn btn-view" title="View"><i class="fa-solid fa-eye"></i></a>
+                                            <a href="edit_quarter.php?id=<?php echo (int)$item['id']; ?>" class="action-btn btn-edit" title="Edit"><i class="fa-solid fa-pen-to-square"></i></a>
+                                            <button class="action-btn btn-delete" onclick="promptDelete(<?php echo (int)$item['id']; ?>)" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                                        </div>
+                                    <?php else: ?>
+                                        <span style="font-size:0.75rem;color:#64748b;font-style:italic;">From maintenance list</span>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

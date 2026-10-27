@@ -56,12 +56,12 @@ $conn->close();
 
 // Status colours (only 'Available' will ever be shown here)
 function statusColor(string $status): string {
-    return match ($status) {
+    $map = [
         'Available'         => '#16a34a',
         'Occupied'          => '#1e40af',
         'Under Maintenance' => '#d97706',
-        default             => '#334155'
-    };
+    ];
+    return $map[$status] ?? '#334155';
 }
 
 require_once __DIR__ . '/../layouts/admin_header.php';
