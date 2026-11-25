@@ -1,6 +1,10 @@
 <?php
 /**
- * Approved & Rejected Applications Log - Sri Lanka Railways
+ * Approved Applications Log - Final Approver - Sri Lanka Railways
+ * ---------------------------------------------------------------
+ * Shows only the applications the Final Approver has approved.
+ * Rejected applications do not appear here because the FA rejection
+ * flow deletes the entire application row from the database.
  */
 require_once __DIR__ . '/../../../config/config.php';
 
@@ -8,44 +12,82 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-$pageTitle = "Approved & Rejected Applications Log - Sri Lanka Railways";
+$pageTitle = "Approved Applications Log - Sri Lanka Railways";
 
 $userData = [
-    'name' => 'Final Approver',
-    'role' => 'Sri Lanka Railways - AOT',
+    'name'     => $_SESSION['user_name'] ?? 'Final Approver',
+    'role'     => 'Sri Lanka Railways - AOT',
     'initials' => 'FA'
 ];
 
-// Database fetch placeholder
-// $query = "SELECT * FROM applications WHERE status IN ('Approved', 'Rejected')";
-// $result = mysqli_query($conn,$query);
-
-$logData = [
-    ['id' => 1, 'appNo' => 'SLR/AOT/2026/0001', 'nic' => '981234567V', 'compNo' => '101', 'name' => 'A. B. Perera', 'desig' => 'Station Master', 'status' => 'Approved', 'reason' => '-'],
-    ['id' => 2, 'appNo' => 'SLR/AOT/2026/0002', 'nic' => '957891234V', 'compNo' => '102', 'name' => 'K. D. Silva', 'desig' => 'Signal Inspector', 'status' => 'Rejected', 'reason' => 'Incomplete documentation regarding current technical qualifications.'],
-    ['id' => 3, 'appNo' => 'SLR/AOT/2026/0003', 'nic' => '923456789V', 'compNo' => '105', 'name' => 'M. N. Fernando', 'desig' => 'Locomotive Driver', 'status' => 'Approved', 'reason' => '-'],
-    ['id' => 4, 'appNo' => 'SLR/AOT/2026/0004', 'nic' => '904561238V', 'compNo' => '110', 'name' => 'S. K. Jayasundara', 'desig' => 'Way Inspector', 'status' => 'Rejected', 'reason' => 'Does not meet the minimum service requirement period.'],
-    ['id' => 5, 'appNo' => 'SLR/AOT/2026/0005', 'nic' => '945612378V', 'compNo' => '112', 'name' => 'P. R. Gunawardena', 'desig' => 'Telecommunication Tech', 'status' => 'Approved', 'reason' => '-']
+$user = [
+    'name' => $userData['name']
 ];
 
-// Admin Header include karni[cite: 2, 9]
+$searchQuery = trim($_GET['search'] ?? '');
+
+$conn = getDBConnection();
+
+// -------------------------------------------------------------
+// Fetch all Final-Approver-approved applications
+// (Rejected rows don't exist — FA rejection deletes the row)
+// -------------------------------------------------------------
+$sql = "SELECT a.id,
+               a.application_no   AS appNo,
+               a.nic,
+               a.computer_no      AS compNo,
+               a.final_status,
+               a.final_reason,
+               u.name,
+               COALESCE(u.applicant_designation, '') AS desig
+        FROM applications AS a
+        INNER JOIN users        AS u ON u.nic = a.nic
+        WHERE a.final_status = 'approved'";
+
+if ($searchQuery !== '') {
+    $sql .= " AND (a.application_no LIKE ?
+               OR a.nic LIKE ?
+               OR a.computer_no LIKE ?
+               OR u.name LIKE ?)";
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date DESC, a.id DESC');
+    $searchTerm = '%' . $searchQuery . '%';
+    $stmt->bind_param('ssss', $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+} else {
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date DESC, a.id DESC');
+}
+$stmt->execute();
+$approvedList = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
+
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
+
 <style>
+    :root {
+        --primary-color: #7A1C1C;
+        --primary-dark: #571a1a;
+        --bg-color: #f8fafc;
+        --card-bg: #ffffff;
+        --text-main: #1e293b;
+        --border-color: #e2e8f0;
+    }
+
     html, body {
         height: 100%;
         margin: 0;
         padding: 0;
         overflow-y: auto;
-        background-color: #f8fafc;
+        overflow-x: hidden;
+        background-color: var(--bg-color);
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
 
     .approval-container {
+        width: 100%;
         max-width: 1300px;
         margin: 20px auto;
         padding: 0 20px;
-        width: 100%;
         box-sizing: border-box;
     }
 
@@ -56,7 +98,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
     .approval-container h2 {
         font-size: 1.8rem;
-        color: #7A1C1C;
+        color: var(--primary-color);
         margin-bottom: 12px;
         text-transform: uppercase;
         letter-spacing: 1px;
@@ -70,7 +112,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         align-items: center;
         gap: 6px;
         margin-bottom: 20px;
-        color: #7A1C1C;
+        color: var(--primary-color);
         text-decoration: none;
         font-weight: 600;
         font-size: 0.85rem;
@@ -92,7 +134,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         display: flex;
         align-items: center;
         gap: 10px;
-        background: #7A1C1C;
+        background: var(--primary-color);
         color: #ffffff;
         padding: 6px 14px;
         border-radius: 30px;
@@ -112,7 +154,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         border-radius: 8px;
         overflow: hidden;
         z-index: 100;
-        border: 1px solid #e2e8f0;
+        border: 1px solid var(--border-color);
     }
 
     .profile-dropdown.show {
@@ -120,7 +162,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     }
 
     .profile-dropdown a {
-        color: #1e293b;
+        color: var(--text-main);
         padding: 10px 15px;
         text-decoration: none;
         display: flex;
@@ -132,7 +174,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
     .profile-dropdown a:hover {
         background: #f1f5f9;
-        color: #7A1C1C;
+        color: var(--primary-color);
     }
 
     .profile-dropdown a.logout-btn {
@@ -143,43 +185,10 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         background: #fee2e2;
     }
 
-    /* Tab Switcher Buttons */
-    .tab-buttons-bar {
-        display: flex;
-        gap: 15px;
-        margin-bottom: 20px;
-        flex-wrap: wrap;
-    }
-
-    .tab-btn {
-        background-color: #e2e8f0;
-        color: #334155;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 8px;
-        cursor: pointer;
-        font-weight: 600;
-        font-size: 0.9rem;
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        transition: all 0.2s ease;
-    }
-
-    .tab-btn.active {
-        background-color: #7A1C1C;
-        color: white;
-        box-shadow: 0 4px 6px -1px rgba(122, 28, 28, 0.2);
-    }
-
-    .tab-btn:hover:not(.active) {
-        background-color: #cbd5e1;
-    }
-
     /* Search and Print Action Card */
     .search-card {
-        background: #ffffff;
-        padding: 20px 25px;
+        background: var(--card-bg);
+        padding: 18px 22px;
         border-radius: 12px;
         box-shadow: 0 4px 15px rgba(0,0,0,0.05);
         margin-bottom: 25px;
@@ -188,64 +197,85 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         align-items: center;
         flex-wrap: wrap;
         gap: 15px;
-        border: 1px solid #e2e8f0;
+        border: 1px solid var(--border-color);
+        width: 100%;
+        box-sizing: border-box;
     }
 
     .search-wrapper {
         display: flex;
         gap: 10px;
         align-items: center;
-        width: 100%;
-        max-width: 450px;
+        flex: 1;
+        min-width: 280px;
+    }
+
+    .search-input-container {
+        position: relative;
+        flex: 1;
+        max-width: 350px;
     }
 
     .search-input {
-        padding: 10px 14px;
+        padding: 10px 36px 10px 14px;
         border-radius: 8px;
         border: 1px solid #cbd5e1;
         font-size: 0.9rem;
-        flex: 1;
+        width: 100%;
         outline: none;
+        box-sizing: border-box;
     }
 
     .search-input:focus {
-        border-color: #7A1C1C;
+        border-color: var(--primary-color);
         box-shadow: 0 0 0 3px rgba(122, 28, 28, 0.1);
     }
 
-    .search-btn {
-        background-color: #7A1C1C;
-        color: white;
+    .clear-input-btn {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #94a3b8;
+        text-decoration: none;
+        font-size: 1rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: color 0.2s;
+    }
+
+    .clear-input-btn:hover {
+        color: #1e293b;
+    }
+
+    .search-btn, .print-btn {
         border: none;
         padding: 10px 18px;
         border-radius: 8px;
         font-weight: 600;
         cursor: pointer;
-        display: flex;
+        display: inline-flex;
         align-items: center;
         gap: 6px;
-        transition: background 0.2s;
         font-size: 0.9rem;
+        text-decoration: none;
+        transition: background 0.2s;
+    }
+
+    .search-btn {
+        background-color: var(--primary-color);
+        color: white;
     }
 
     .search-btn:hover {
-        background-color: #571a1a;
+        background-color: var(--primary-dark);
     }
 
     .print-btn {
         background-color: #0284c7;
         color: white;
-        border: none;
-        padding: 10px 18px;
-        border-radius: 8px;
-        font-weight: 600;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        text-decoration: none;
-        transition: background 0.2s;
-        font-size: 0.9rem;
     }
 
     .print-btn:hover {
@@ -253,8 +283,8 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     }
 
     .section-print-title {
-        font-size: 1.2rem;
-        color: #7A1C1C;
+        font-size: 1.25rem;
+        color: var(--primary-color);
         margin-bottom: 15px;
         font-weight: 700;
         text-transform: uppercase;
@@ -275,19 +305,15 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         color: #166534;
     }
 
-    .badge-rejected {
-        background-color: #fee2e2;
-        color: #991b1b;
-    }
-
-    .table-card { 
-        background: #ffffff; 
-        padding: 20px; 
-        border-radius: 12px; 
-        box-shadow: 0 8px 20px rgba(0,0,0,0.06); 
-        border-top: 5px solid #7A1C1C; 
-        overflow-x: auto; 
-        position: relative; 
+    .table-card {
+        background: var(--card-bg);
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+        border-top: 5px solid var(--primary-color);
+        overflow-x: auto;
+        width: 100%;
+        box-sizing: border-box;
     }
 
     .table-responsive {
@@ -305,13 +331,13 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
     th, td {
         padding: 12px 14px;
-        border: 1px solid #cbd5e1;
+        border: 1px solid var(--border-color);
         vertical-align: middle;
     }
 
     th {
         background-color: #f8fafc;
-        color: #1e293b;
+        color: var(--text-main);
         font-weight: 700;
         text-transform: uppercase;
         font-size: 0.8rem;
@@ -325,6 +351,9 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     .reason-text {
         color: #475569;
         font-style: italic;
+        white-space: normal;
+        word-break: break-word;
+        text-align: left;
     }
 
     .custom-modal {
@@ -353,12 +382,12 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
     .custom-modal-content i {
         font-size: 2.8rem;
-        color: #7A1C1C;
+        color: var(--primary-color);
         margin-bottom: 15px;
     }
 
     .custom-modal-content h3 {
-        color: #1e293b;
+        color: var(--text-main);
         margin-bottom: 10px;
         font-size: 1.3rem;
     }
@@ -397,18 +426,67 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             align-items: stretch;
         }
         .search-wrapper {
+            width: 100%;
+            min-width: 0;
+            gap: 8px;
+        }
+        .search-input-container {
             max-width: 100%;
+            min-width: 0;
+        }
+        .search-input {
+            padding: 12px 36px 12px 14px;
+            font-size: 1rem;
+        }
+        .search-btn {
+            width: auto;
+            flex: 0 0 auto;
+            padding: 8px 12px;
+            font-size: 0.8rem;
+            white-space: nowrap;
         }
         .print-btn {
             width: 100%;
             justify-content: center;
         }
     }
+
+    @media print {
+        @page {
+            size: landscape;
+            margin: 5mm;
+        }
+
+        html, body {
+            background-color: #ffffff !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        .back-link, .user-profile-wrapper, .search-card {
+            display: none !important;
+        }
+
+        .table-card {
+            box-shadow: none !important;
+            border: none !important;
+            padding: 0 !important;
+        }
+
+        table {
+            width: 100% !important;
+            font-size: 8.5pt;
+        }
+
+        th, td {
+            padding: 8px 10px !important;
+        }
+    }
 </style>
 
 <main class="approval-container">
-    <?php if (isset($_SESSION['admin_name']) || (isset($_SESSION['role']) &&$_SESSION['role'] === 'admin')): ?>
-        <a href="dashboard.php" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
+    <?php if (isset($_SESSION['admin_name']) || (isset($_SESSION['role']) && $_SESSION['role'] === 'admin')): ?>
+        <a href="FA_dashboard.php" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
     <?php else: ?>
         <div class="user-profile-wrapper">
             <div class="user-profile-badge" onclick="toggleDropdown()">
@@ -428,64 +506,30 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             </div>
         </div>
     <?php endif; ?>
-    
+
     <div class="approval-header">
-        <h2>Approved & Rejected Applications Log</h2>
+        <h2>Approved Applications Log</h2>
     </div>
 
-    <!-- Tab Switcher Buttons -->
-    <div class="tab-buttons-bar">
-        <button type="button" id="approvedTabBtn" class="tab-btn active" onclick="switchTab('approved')">
-            <i class="fa-solid fa-clipboard-check"></i> Approved List
-        </button>
-        <button type="button" id="rejectedTabBtn" class="tab-btn" onclick="switchTab('rejected')">
-            <i class="fa-solid fa-ban"></i> Rejected List
-        </button>
-    </div>
-
-    <!-- 1. Approved Table Section -->
-    <div id="approvedSection" class="table-section">
+    <!-- Approved Table Section -->
+    <div id="approvedSection" class="table-section print-active">
         <h3 class="section-print-title">Approved List</h3>
-        
-        <div class="search-card">
+
+        <form method="GET" action="" class="search-card">
             <div class="search-wrapper">
-                <input type="text" id="approvedSearchInput" class="search-input" placeholder="Search by NIC or Name..." oninput="checkApprovedClear(this)">
-                <button type="button" class="search-btn" onclick="filterApprovedTable()"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
+                <div class="search-input-container">
+                    <input type="text" name="search" id="approvedSearchInput" class="search-input"
+                           placeholder="Search by NIC or Name..."
+                           value="<?php echo htmlspecialchars($searchQuery); ?>"
+                           oninput="if(this.value.trim()==='') this.form.submit();">
+                    <?php if ($searchQuery !== ''): ?>
+                        <a href="?" class="clear-input-btn" title="Clear Search"><i class="fa-solid fa-xmark"></i></a>
+                    <?php endif; ?>
+                </div>
+                <button type="submit" class="search-btn"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
             </div>
             <button type="button" class="print-btn" onclick="window.print()"><i class="fa-solid fa-print"></i> Print / Save as PDF</button>
-        </div>
-
-        <div class="table-card">
-            <div class="table-responsive">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>No.</th>
-                            <th>Application Number</th>
-                            <th>NIC</th>
-                            <th>Computer Number</th>
-                            <th>Name</th>
-                            <th>Designation</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="approvedTableBody"></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- 2. Rejected Table Section -->
-    <div id="rejectedSection" class="table-section" style="display: none;">
-        <h3 class="section-print-title">Rejected List</h3>
-
-        <div class="search-card">
-            <div class="search-wrapper">
-                <input type="text" id="rejectedSearchInput" class="search-input" placeholder="Search by NIC or Name..." oninput="checkRejectedClear(this)">
-                <button type="button" class="search-btn" onclick="filterRejectedTable()"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
-            </div>
-            <button type="button" class="print-btn" onclick="window.print()"><i class="fa-solid fa-print"></i> Print / Save as PDF</button>
-        </div>
+        </form>
 
         <div class="table-card">
             <div class="table-responsive">
@@ -502,7 +546,24 @@ require_once __DIR__ . '/../layouts/admin_header.php';
                             <th>Remarks / Reason</th>
                         </tr>
                     </thead>
-                    <tbody id="rejectedTableBody"></tbody>
+                    <tbody>
+                        <?php if (empty($approvedList)): ?>
+                            <tr><td colspan="8" style="text-align: center; color: #64748b; padding: 25px;">No approved records found.</td></tr>
+                        <?php else: ?>
+                            <?php $i = 1; foreach ($approvedList as $item): ?>
+                                <tr>
+                                    <td><?php echo $i++; ?></td>
+                                    <td><strong><?php echo htmlspecialchars($item['appNo'] ?? (string)$item['id']); ?></strong></td>
+                                    <td><?php echo htmlspecialchars($item['nic']); ?></td>
+                                    <td><?php echo htmlspecialchars($item['compNo']); ?></td>
+                                    <td><?php echo htmlspecialchars($item['name']); ?></td>
+                                    <td><?php echo htmlspecialchars($item['desig']); ?></td>
+                                    <td><span class="badge badge-approved"><i class="fa-solid fa-check" title="Approved"></i></span></td>
+                                    <td><span class="reason-text"><?php echo htmlspecialchars($item['final_reason'] ?? '-'); ?></span></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
                 </table>
             </div>
         </div>
@@ -523,8 +584,6 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 </div>
 
 <script>
-    const logData = <?php echo json_encode($logData); ?>;
-
     function toggleDropdown() {
         const dropdown = document.getElementById('profileDropdown');
         if (dropdown) {
@@ -557,129 +616,8 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     function executeLogout() {
         window.location.href = "login.php";
     }
-
-    function switchTab(tabName) {
-        const approvedSec = document.getElementById('approvedSection');
-        const rejectedSec = document.getElementById('rejectedSection');
-        const approvedBtn = document.getElementById('approvedTabBtn');
-        const rejectedBtn = document.getElementById('rejectedTabBtn');
-
-        if (tabName === 'approved') {
-            approvedSec.style.display = 'block';
-            rejectedSec.style.display = 'none';
-            approvedBtn.classList.add('active');
-            rejectedBtn.classList.remove('active');
-        } else {
-            approvedSec.style.display = 'none';
-            rejectedSec.style.display = 'block';
-            rejectedBtn.classList.add('active');
-            approvedBtn.classList.remove('active');
-        }
-    }
-
-    function renderApprovedTable(searchQuery = '') {
-        const approvedTbody = document.getElementById('approvedTableBody');
-        approvedTbody.innerHTML = "";
-
-        let approvedList = logData.filter(item => item.status === 'Approved');
-
-        if (searchQuery.trim() !== '') {
-            const query = searchQuery.toLowerCase().trim();
-            approvedList = approvedList.filter(item => 
-                item.nic.toLowerCase().includes(query) || item.name.toLowerCase().includes(query)
-            );
-        }
-
-        if (approvedList.length === 0) {
-            approvedTbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #64748b; padding: 25px;">No approved records found.</td></tr>`;
-        } else {
-            approvedList.forEach((item, index) => {
-                approvedTbody.innerHTML += `
-                    <tr>
-                        <td>${index + 1}</td>
-                        <td><strong>${item.appNo}</strong></td>
-                        <td>${item.nic}</td>
-                        <td>${item.compNo}</td>
-                        <td>${item.name}</td>
-                        <td>${item.desig}</td>
-                        <td><span class="badge badge-approved"><i class="fa-solid fa-check" title="Approved"></i></span></td>
-                    </tr>
-                `;
-            });
-        }
-    }
-
-    function renderRejectedTable(searchQuery = '') {
-        const rejectedTbody = document.getElementById('rejectedTableBody');
-        rejectedTbody.innerHTML = "";
-
-        let rejectedList = logData.filter(item => item.status === 'Rejected');
-
-        if (searchQuery.trim() !== '') {
-            const query = searchQuery.toLowerCase().trim();
-            rejectedList = rejectedList.filter(item => 
-                item.nic.toLowerCase().includes(query) || item.name.toLowerCase().includes(query)
-            );
-        }
-
-        if (rejectedList.length === 0) {
-            rejectedTbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: #64748b; padding: 25px;">No rejected records found.</td></tr>`;
-        } else {
-            rejectedList.forEach((item, index) => {
-                rejectedTbody.innerHTML += `
-                    <tr>
-                        <td>${index + 1}</td>
-                        <td><strong>${item.appNo}</strong></td>
-                        <td>${item.nic}</td>
-                        <td>${item.compNo}</td>
-                        <td>${item.name}</td>
-                        <td>${item.desig}</td>
-                        <td><span class="badge badge-rejected"><i class="fa-solid fa-xmark" title="Rejected"></i></span></td>
-                        <td><span class="reason-text">${item.reason}</span></td>
-                    </tr>
-                `;
-            });
-        }
-    }
-
-    function filterApprovedTable() {
-        const query = document.getElementById('approvedSearchInput').value;
-        renderApprovedTable(query);
-    }
-
-    function checkApprovedClear(input) {
-        if (input.value.trim() === '') {
-            renderApprovedTable('');
-        }
-    }
-
-    function filterRejectedTable() {
-        const query = document.getElementById('rejectedSearchInput').value;
-        renderRejectedTable(query);
-    }
-
-    function checkRejectedClear(input) {
-        if (input.value.trim() === '') {
-            renderRejectedTable('');
-        }
-    }
-
-    window.onload = function() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const tabParam = urlParams.get('tab');
-        
-        if (tabParam === 'rejected') {
-            switchTab('rejected');
-        } else {
-            switchTab('approved');
-        }
-
-        renderApprovedTable();
-        renderRejectedTable();
-    }
 </script>
 
 <?php
-// Admin Footer include karni[cite: 2, 9]
 require_once __DIR__ . '/../layouts/admin_footer.php';
 ?>

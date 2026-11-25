@@ -1,6 +1,19 @@
 <?php
 /**
  * Generate Official Letter - Sri Lanka Railways
+ * ------------------------------------------------
+ * Auto-fills all fields from the database when opened via
+ * final_Approve_SC.php?app_id=XX. All fields remain editable.
+ *
+ * Letter format: Subject Clerk → Building Department Foreman (BDF)
+ * requesting approval for quarter allocation.
+ *
+ * Features:
+ *   - Auto-fill from DB
+ *   - Generate Preview (HTML)
+ *   - Generate PDF Blob (html2pdf.js)
+ *   - Save PDF to Database (AJAX → /letters/save-pdf)
+ *   - Send Letter to BDF (AJAX → /letters/send-to-bdf)
  */
 require_once __DIR__ . '/../../../config/config.php';
 
@@ -15,6 +28,68 @@ $userData = [
     'role' => 'Sri Lanka Railways - AOT',
     'initials' => 'SC'
 ];
+
+// ============================================================
+// AUTO-FILL: Fetch applicant data from database using app_id
+// ============================================================
+$appId = filter_input(INPUT_GET, 'app_id', FILTER_VALIDATE_INT);
+$prefill = [
+    'appNo'             => '',
+    'nic'               => '',
+    'fullName'          => '',
+    'designation'       => '',
+    'receiverAddress'   => '',
+    'quarterType'       => '',
+    'quarterName'       => '',
+    'applicationId'     => 0,
+];
+
+if ($appId) {
+    $conn = getDBConnection();
+    $stmt = $conn->prepare(
+        "SELECT a.id,
+                a.application_no,
+                a.nic,
+                a.applied_quarter_number,
+                a.applied_quarter_location,
+                u.name,
+                COALESCE(u.applicant_designation, '')            AS designation,
+                COALESCE(u.applicant_current_work_station, '')   AS workplace,
+                aq.quarter_no   AS allocated_quarter_no,
+                aq.quarter_name AS allocated_quarter_name,
+                aq.quarter_location AS allocated_quarter_location
+         FROM applications AS a
+         INNER JOIN users AS u ON u.nic = a.nic
+         LEFT JOIN allocated_quarters AS aq
+             ON aq.nic = a.nic AND aq.source = 'normal'
+         WHERE a.id = ?
+         LIMIT 1"
+    );
+    $stmt->bind_param('i', $appId);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    $conn->close();
+
+    if ($row) {
+        $prefill['applicationId']   = (int)$row['id'];
+        $prefill['appNo']           = $row['application_no'] ?? '';
+        $prefill['nic']             = $row['nic'] ?? '';
+        $prefill['fullName']        = $row['name'] ?? '';
+        $prefill['designation']     = $row['designation'] ?? '';
+        $prefill['receiverAddress'] = $row['workplace'] ?? '';
+
+        // Prefer allocated quarter; fall back to applied quarter
+        if (!empty($row['allocated_quarter_no'])) {
+            $prefill['quarterType'] = $row['allocated_quarter_no'];
+            $prefill['quarterName'] = $row['allocated_quarter_name']
+                ?: ($row['allocated_quarter_location'] ?? '');
+        } else {
+            $prefill['quarterType'] = $row['applied_quarter_number'] ?? '';
+            $prefill['quarterName'] = $row['applied_quarter_location'] ?? '';
+        }
+    }
+}
 
 require_once __DIR__ . '/../layouts/admin_header.php';
 ?>
@@ -161,6 +236,11 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
         border-color: #7A1C1C;
     }
+    .form-group input[readonly] {
+        background-color: #f1f5f9;
+        color: #475569;
+        cursor: default;
+    }
     .form-group.full-width {
         grid-column: 1 / -1;
     }
@@ -174,9 +254,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         padding-bottom: 5px;
     }
 
-    .btn-generate {
-        background-color: #7A1C1C;
-        color: white;
+    .btn-generate, .btn-save-letter, .btn-send-bdf {
         border: none;
         padding: 12px 24px;
         border-radius: 6px;
@@ -185,9 +263,82 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        transition: background 0.2s;
+        transition: all 0.2s;
+        font-size: 0.95rem;
+        color: white;
     }
+    .btn-generate { background-color: #7A1C1C; }
     .btn-generate:hover { background-color: #571a1a; }
+
+    .btn-save-letter {
+        background: linear-gradient(135deg, #059669, #047857);
+        display: none;
+    }
+    .btn-save-letter:hover { background: linear-gradient(135deg, #047857, #065f46); }
+
+    .btn-send-bdf {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        display: none;
+    }
+    .btn-send-bdf:hover { background: linear-gradient(135deg, #1d4ed8, #1e40af); }
+
+    .btn-generate:disabled, .btn-save-letter:disabled, .btn-send-bdf:disabled {
+        background: #9ca3af !important;
+        cursor: not-allowed;
+        opacity: 0.7;
+    }
+
+    .btn-actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 15px;
+    }
+
+    .success-alert {
+        display: none;
+        background: #dcfce7;
+        color: #166534;
+        padding: 14px 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        font-weight: 600;
+        border: 1px solid #bbf7d0;
+        text-align: center;
+    }
+    .success-alert.show { display: block; }
+
+    .autofill-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #dbeafe;
+        color: #1e40af;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        margin-bottom: 20px;
+    }
+
+    .loading-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 9999;
+        justify-content: center;
+        align-items: center;
+    }
+    .loading-overlay.show { display: flex; }
+    .loading-box {
+        background: #fff;
+        padding: 30px 40px;
+        border-radius: 12px;
+        text-align: center;
+    }
+    .loading-box i { font-size: 2.5rem; color: #7A1C1C; margin-bottom: 10px; }
+    .loading-box p { margin: 0; font-weight: 600; color: #1e293b; }
 
     .letter-preview-box {
         background: #fff;
@@ -200,9 +351,9 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         line-height: 1.6;
         font-size: 12pt;
         margin-top: 30px;
-        display: none; 
+        display: none;
     }
-    
+
     .letter-actions-bar {
         display: none;
         justify-content: flex-end;
@@ -210,20 +361,25 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         margin-bottom: 40px;
     }
 
-    .btn-print-action {
-        background-color: #0284c7;
-        color: white;
+    .print-btn {
         border: none;
-        padding: 10px 20px;
-        border-radius: 6px;
+        padding: 10px 18px;
+        border-radius: 8px;
         font-weight: 600;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
+        font-size: 0.9rem;
+        text-decoration: none;
         transition: background 0.2s;
+        background-color: #0284c7;
+        color: white;
     }
-    .btn-print-action:hover { background-color: #0369a1; }
+
+    .print-btn:hover {
+        background-color: #0369a1;
+    }
 
     .custom-modal {
         display: none;
@@ -282,7 +438,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         color: white;
     }
 
-    .btn-modal-confirm { background-color: #ef4444; }
+    .btn-modal-confirm { background-color: #2563eb; }
     .btn-modal-cancel { background-color: #64748b; }
 
     @media print {
@@ -294,6 +450,9 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             background: white !important;
             margin: 0 !important;
             padding: 0 !important;
+        }
+        header, footer, nav, .site-header, .site-footer, #adminHeader, #adminFooter {
+            display: none !important;
         }
         .no-print {
             display: none !important;
@@ -325,9 +484,17 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     }
 </style>
 
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-box">
+        <i class="fa-solid fa-spinner fa-spin"></i>
+        <p id="loadingText">Processing...</p>
+    </div>
+</div>
+
 <div class="container no-print">
-    <?php if (isset($_SESSION['admin_name']) || (isset($_SESSION['role']) &&$_SESSION['role'] === 'admin')): ?>
-        <a href="dashboard.php" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
+    <?php if (isset($_SESSION['admin_name']) || (isset($_SESSION['role']) && $_SESSION['role'] === 'admin')): ?>
+        <a href="SC_dashboard.php" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
     <?php else: ?>
         <div class="user-profile-wrapper">
             <div class="user-profile-badge" onclick="toggleDropdown()">
@@ -342,29 +509,51 @@ require_once __DIR__ . '/../layouts/admin_header.php';
 
             <div id="profileDropdown" class="profile-dropdown">
                 <a href="edit_profile.php"><i class="fa-solid fa-user-pen"></i> Edit Profile</a>
-                <a href="SC.php"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
+                <a href="SC_dashboard.php"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
                 <a href="#" class="logout-btn" onclick="openLogoutModal(event)"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
             </div>
         </div>
     <?php endif; ?>
-    
+
+    <!-- Success Alert -->
+    <div class="success-alert" id="successAlert">
+        <i class="fa-solid fa-circle-check"></i> <span id="successMessage"></span>
+    </div>
+
     <div class="card">
         <h2 class="card-title">Generate Official Letter</h2>
-        <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 20px;">
-            Enter Application Number first to auto-fill applicant information from stored records[cite: 33].
-        </p>
+
+        <?php if ($appId && $prefill['appNo']): ?>
+            <div class="autofill-badge">
+                <i class="fa-solid fa-database"></i>
+                All fields auto-filled from database for Application: <strong><?php echo htmlspecialchars($prefill['appNo']); ?></strong>
+                — You can edit any field below before generating.
+            </div>
+        <?php else: ?>
+            <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 20px;">
+                Enter Application Number first to auto-fill applicant information from stored records.
+            </p>
+        <?php endif; ?>
+
+        <!-- Hidden field to store the application ID for DB save -->
+        <input type="hidden" id="dbApplicationId" value="<?php echo (int)$prefill['applicationId']; ?>">
 
         <form id="letterForm" onsubmit="generateLetter(event)">
-            
+
             <div class="section-subheading">1. Application Reference</div>
             <div class="form-grid">
                 <div class="form-group">
                     <label>Application Number (Enter first)</label>
-                    <input type="text" id="appNo" placeholder="e.g. 0001" oninput="autoFillApplicant(this.value)" required>
+                    <input type="text" id="appNo" placeholder="e.g. SLR/AOT/2026/0001"
+                           oninput="autoFillApplicant(this.value)"
+                           value="<?php echo htmlspecialchars($prefill['appNo']); ?>"
+                           required>
                 </div>
                 <div class="form-group">
                     <label>Applicant NIC</label>
-                    <input type="text" id="nic" placeholder="e.g. 901234567V" required>
+                    <input type="text" id="nic" placeholder="e.g. 901234567V"
+                           value="<?php echo htmlspecialchars($prefill['nic']); ?>"
+                           required>
                 </div>
             </div>
 
@@ -372,23 +561,33 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             <div class="form-grid">
                 <div class="form-group">
                     <label>Applicant Name</label>
-                    <input type="text" id="fullName" placeholder="e.g. John Doe" required>
+                    <input type="text" id="fullName" placeholder="e.g. John Doe"
+                           value="<?php echo htmlspecialchars($prefill['fullName']); ?>"
+                           required>
                 </div>
                 <div class="form-group">
                     <label>Designation</label>
-                    <input type="text" id="designation" placeholder="e.g. Departmental Officer" required>
+                    <input type="text" id="designation" placeholder="e.g. Departmental Officer"
+                           value="<?php echo htmlspecialchars($prefill['designation']); ?>"
+                           required>
                 </div>
                 <div class="form-group">
                     <label>Workplace</label>
-                    <input type="text" id="receiverAddress" placeholder="e.g. Colombo Railway Station" required>
+                    <input type="text" id="receiverAddress" placeholder="e.g. Colombo Railway Station"
+                           value="<?php echo htmlspecialchars($prefill['receiverAddress']); ?>"
+                           required>
                 </div>
                 <div class="form-group">
                     <label>Requested Quarter No.</label>
-                    <input type="text" id="quarterType" placeholder="e.g. Q-001" required>
+                    <input type="text" id="quarterType" placeholder="e.g. Q-001"
+                           value="<?php echo htmlspecialchars($prefill['quarterType']); ?>"
+                           required>
                 </div>
                 <div class="form-group">
                     <label>Requested Quarter Name</label>
-                    <input type="text" id="quarterName" placeholder="e.g. Sunflower Manor" required>
+                    <input type="text" id="quarterName" placeholder="e.g. Sunflower Manor"
+                           value="<?php echo htmlspecialchars($prefill['quarterName']); ?>"
+                           required>
                 </div>
             </div>
 
@@ -396,22 +595,38 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             <div class="form-grid">
                 <div class="form-group full-width">
                     <label>Letter Subject</label>
-                    <input type="text" id="letterSubject" value="Request for Quarter Allocation for Departmental Officer - " required>
+                    <input type="text" id="letterSubject"
+                           value="<?php
+                               if ($prefill['fullName']) {
+                                   echo htmlspecialchars('Request for Quarter Allocation for ' . $prefill['fullName'] . ' (' . $prefill['designation'] . ')');
+                               } else {
+                                   echo 'Request for Quarter Allocation for Departmental Officer - ';
+                               }
+                           ?>"
+                           required>
                 </div>
                 <div class="form-group full-width">
                     <label>Main Body Description</label>
                     <textarea id="mainDescription" rows="5" required>This is to formally request the allocation of government quarters for the above-mentioned officer of Sri Lanka Railways. The applicant has duly submitted all required documentation, service records, and clearances through the Quarters Management Branch. Given the urgent service requirements and official duties, the approval of the Board of Directors / Housing Board (BDF) is hereby requested to proceed with the direct quarter allocation.</textarea>
                 </div>
             </div>
-            
-            <button type="submit" class="btn-generate" style="margin-top: 15px;">
-                <i class="fa-solid fa-eye"></i> Generate Official Letter Preview
-            </button>
+
+            <div class="btn-actions">
+                <button type="submit" class="btn-generate" id="generateBtn">
+                    <i class="fa-solid fa-eye"></i> Generate Official Letter Preview
+                </button>
+                <button type="button" class="btn-save-letter" id="saveBtn" onclick="saveLetterToDatabase()">
+                    <i class="fa-solid fa-floppy-disk"></i> Save PDF to Database
+                </button>
+                <button type="button" class="btn-send-bdf" id="sendBdfBtn" onclick="confirmSendToBdf()">
+                    <i class="fa-solid fa-paper-plane"></i> Send Letter to BDF
+                </button>
+            </div>
         </form>
     </div>
 </div>
 
-<div class="container no-print" style="margin-top: 0;">
+<div class="container" style="margin-top: 0;">
     <div id="letterPreviewBox" class="letter-preview-box">
         <div style="text-align: center; margin-bottom: 25px;">
             <h2 style="margin: 0; font-size: 14pt; font-weight: bold; text-transform: uppercase; color: #000;">SRI LANKA RAILWAYS</h2>
@@ -428,8 +643,7 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         </div>
 
         <div style="margin-bottom: 20px; font-size: 12pt;">
-            <strong>The Chairman / Members,</strong><br>
-            Board of Directors / Housing Board (BDF),<br>
+            Building Foreman,<br>
             Sri Lanka Railways, Colombo 10.
         </div>
 
@@ -455,12 +669,26 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     </div>
 
     <div id="letterActionsBar" class="letter-actions-bar no-print">
-        <button type="button" class="btn-print-action" onclick="triggerPrint()">
-            <i class="fa-solid fa-print"></i> Print Official Letter
+        <button type="button" class="print-btn" onclick="triggerPrint()">
+            <i class="fa-solid fa-print"></i> Print / Save as PDF
         </button>
     </div>
 </div>
 
+<!-- Send to BDF confirmation modal -->
+<div id="sendBdfModal" class="custom-modal">
+    <div class="custom-modal-content">
+        <i class="fa-solid fa-paper-plane"></i>
+        <h3>Forward Letter to BDF?</h3>
+        <p>This letter will appear on the BDF dashboard for final review. Please confirm.</p>
+        <div class="modal-action-btns">
+            <button type="button" class="btn-modal-cancel" onclick="closeSendBdfModal()">Cancel</button>
+            <button type="button" class="btn-modal-confirm" onclick="executeSendToBdf()">Yes, Send to BDF</button>
+        </div>
+    </div>
+</div>
+
+<!-- Logout Modal -->
 <div id="logoutModal" class="custom-modal">
     <div class="custom-modal-content">
         <i class="fa-solid fa-triangle-exclamation"></i>
@@ -473,7 +701,16 @@ require_once __DIR__ . '/../layouts/admin_header.php';
     </div>
 </div>
 
+<!-- Load html2pdf.js for client-side PDF generation -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
 <script>
+    // ============================================================
+    // Global state
+    // ============================================================
+    let generatedPdfBlob = null;
+    let savedLetterId    = null;
+
     function toggleDropdown() {
         const dropdown = document.getElementById('profileDropdown');
         if (dropdown) {
@@ -507,6 +744,9 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         window.location.href = "login.php";
     }
 
+    // ============================================================
+    // Hardcoded fallback database
+    // ============================================================
     const applicantsDatabase = {
         "SLR/AOT/2026/0001": {
             nic: "883421092V",
@@ -546,18 +786,14 @@ require_once __DIR__ . '/../layouts/admin_header.php';
             document.getElementById('receiverAddress').value = matchedData.receiverAddress;
             document.getElementById('quarterType').value = matchedData.quarterType;
             document.getElementById('quarterName').value = matchedData.quarterName;
-            
+
             document.getElementById('letterSubject').value = "Request for Quarter Allocation for " + matchedData.fullName + " (" + matchedData.designation + ")";
-        } else {
-            document.getElementById('nic').value = '';
-            document.getElementById('fullName').value = '';
-            document.getElementById('designation').value = '';
-            document.getElementById('receiverAddress').value = '';
-            document.getElementById('quarterType').value = '';
-            document.getElementById('quarterName').value = '';
         }
     }
 
+    // ============================================================
+    // Generate Letter Preview
+    // ============================================================
     function generateLetter(event) {
         event.preventDefault();
         updatePreviewContent();
@@ -565,6 +801,8 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         document.getElementById('letterPreviewBox').style.display = 'block';
         document.getElementById('letterActionsBar').style.display = 'flex';
         document.getElementById('letterPreviewBox').scrollIntoView({ behavior: 'smooth' });
+
+        generatePdfBlob();
     }
 
     function updatePreviewContent() {
@@ -587,15 +825,180 @@ require_once __DIR__ . '/../layouts/admin_header.php';
         document.getElementById('pDate').innerText = today;
 
         document.getElementById('pIntroPara').innerHTML = `This letter is submitted regarding the quarter allocation request made by <strong>${fullName}</strong> (Designation: <strong>${designation}</strong>, NIC: <strong>${nic}</strong>, Workplace: <strong>${receiverAddress}</strong>) under Application Reference No: <strong>SLR/AOT/2026/${appNoClean}</strong> for Quarter No: <strong>${quarterType}</strong> (${quarterName}).`;
-        
+
         document.getElementById('pCustomDescPara').innerHTML = mainDescription;
     }
 
+    // ============================================================
+    // Generate PDF Blob
+    // ============================================================
+    function generatePdfBlob() {
+        const btn = document.getElementById('generateBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating PDF...';
+
+        const element = document.getElementById('letterPreviewBox');
+        const appNo = document.getElementById('appNo').value || 'unknown';
+        const nic = document.getElementById('nic').value || 'unknown';
+
+        const opt = {
+            margin:       [15, 15, 15, 15],
+            filename:     'Letter_' + appNo + '_' + nic + '.pdf',
+            image:        { type: 'jpeg', quality: 0.98 },
+            html2canvas:  { scale: 2, useCORS: true, letterRendering: true },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+
+        html2pdf().set(opt).from(element).outputPdf('blob').then(function(blob) {
+            generatedPdfBlob = blob;
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-eye"></i> Regenerate Preview';
+            document.getElementById('saveBtn').style.display = 'inline-flex';
+            showSuccess('Letter preview generated! Click "Save PDF to Database" to store it permanently.');
+        }).catch(function(err) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-eye"></i> Generate Official Letter Preview';
+            console.error('PDF generation failed:', err);
+            alert('PDF generation failed: ' + err.message);
+        });
+    }
+
+    // ============================================================
+    // Save PDF to Database
+    // ============================================================
+    function saveLetterToDatabase() {
+        if (!generatedPdfBlob) {
+            alert('Please generate the letter first before saving.');
+            return;
+        }
+
+        const loading = document.getElementById('loadingOverlay');
+        document.getElementById('loadingText').innerText = 'Saving to database...';
+        loading.classList.add('show');
+
+        const appNo = document.getElementById('appNo').value || '';
+        const nic = document.getElementById('nic').value || '';
+        const fullName = document.getElementById('fullName').value || '';
+        const letterSubject = document.getElementById('letterSubject').value || '';
+        const applicationId = document.getElementById('dbApplicationId').value || '0';
+
+        const formData = new FormData();
+        formData.append('application_id', applicationId);
+        formData.append('nic', nic);
+        formData.append('application_no', appNo);
+        formData.append('applicant_name', fullName);
+        formData.append('letter_type', 'quarter_allocation_request');
+        formData.append('letter_subject', letterSubject);
+        formData.append('letter_pdf',
+            generatedPdfBlob,
+            'Letter_' + appNo + '_' + nic + '.pdf'
+        );
+
+        fetch('<?php echo baseUrl('letters/save-pdf'); ?>', {
+            method: 'POST',
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            loading.classList.remove('show');
+            if (data.success) {
+                savedLetterId = data.letter_id;
+                showSuccess('✅ Letter saved to database successfully! File ID: ' + data.letter_id + '. <a href="' + data.file_url + '" target="_blank" style="color:#047857;font-weight:700;">Click here to open PDF</a>');
+                document.getElementById('saveBtn').disabled = true;
+                document.getElementById('saveBtn').innerHTML = '<i class="fa-solid fa-check"></i> Saved!';
+                document.getElementById('sendBdfBtn').style.display = 'inline-flex';
+            } else {
+                alert('Save failed: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            loading.classList.remove('show');
+            alert('Network error: ' + err.message);
+        });
+    }
+
+    // ============================================================
+    // Send Letter to BDF
+    // ============================================================
+    function confirmSendToBdf() {
+        if (!savedLetterId) {
+            alert('Please save the letter to the database first.');
+            return;
+        }
+        document.getElementById('sendBdfModal').style.display = 'flex';
+    }
+
+    function closeSendBdfModal() {
+        document.getElementById('sendBdfModal').style.display = 'none';
+    }
+
+    function executeSendToBdf() {
+        closeSendBdfModal();
+
+        const loading = document.getElementById('loadingOverlay');
+        document.getElementById('loadingText').innerText = 'Forwarding to BDF dashboard...';
+        loading.classList.add('show');
+
+        const formData = new FormData();
+        formData.append('letter_id', savedLetterId);
+
+        fetch('<?php echo baseUrl('letters/send-to-bdf'); ?>', {
+            method: 'POST',
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            loading.classList.remove('show');
+            if (data.success) {
+                const btn = document.getElementById('sendBdfBtn');
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-check"></i> Sent to BDF!';
+                showSuccess('📨 ' + (data.already_sent ? data.message : 'Letter forwarded to BDF dashboard successfully!'));
+            } else {
+                alert('Failed to send to BDF: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            loading.classList.remove('show');
+            alert('Network error: ' + err.message);
+        });
+    }
+
+    // ============================================================
+    // Show success message
+    // ============================================================
+    function showSuccess(msg) {
+        const alert = document.getElementById('successAlert');
+        document.getElementById('successMessage').innerHTML = msg;
+        alert.classList.add('show');
+        alert.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => alert.classList.remove('show'), 8000);
+    }
+
+    // ============================================================
+    // Print / Save as PDF (browser native)
+    // ============================================================
     function triggerPrint() {
         updatePreviewContent();
         document.getElementById('letterPreviewBox').style.display = 'block';
         window.print();
     }
+
+    // ============================================================
+    // Auto-generate preview on page load if data was pre-filled
+    // ============================================================
+    window.addEventListener('DOMContentLoaded', function() {
+        const appNo = document.getElementById('appNo').value.trim();
+        if (appNo) {
+            updatePreviewContent();
+            document.getElementById('letterPreviewBox').style.display = 'block';
+            document.getElementById('letterActionsBar').style.display = 'flex';
+
+            setTimeout(function() {
+                generatePdfBlob();
+            }, 500);
+        }
+    });
 </script>
 
 <?php

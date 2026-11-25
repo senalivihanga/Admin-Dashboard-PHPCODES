@@ -1,0 +1,615 @@
+<?php
+/**
+ * Approved & Rejected Applications Log - Sri Lanka Railways
+ */
+require_once __DIR__ . '/../../../config/config.php';
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+$pageTitle = "Approved & Rejected Applications Log - Sri Lanka Railways";
+
+$activeTab = ($_GET['tab'] ?? 'approved') === 'rejected' ? 'rejected' : 'approved';
+$searchQuery = trim($_GET['search'] ?? '');
+$approvedList = [];
+$rejectedList = [];
+$conn = getDBConnection();
+$rrMessage = '';
+$rrType = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $postAction = $_POST['action'] ?? '';
+    $postId = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
+    $postReason = trim((string)($_POST['reason'] ?? ''));
+
+    if ($postId && ($postAction === 'send_back' || ($postAction === 'reject' && $postReason !== ''))) {
+        if ($postAction === 'send_back') {
+            // Boss disagrees with Personal File: send it back to Personal File (clerk decision reset so it can flow on again)
+            $stmt = $conn->prepare(
+                "UPDATE applications
+                    SET application_status = 'pending_clerk', file_status = 'pending', clerk_status = 'pending'
+                  WHERE id = ? AND application_status = 'returned_to_boss' AND file_status = 'rejected'"
+            );
+            $stmt->bind_param('i', $postId);
+        } else {
+            // Boss agrees: reject it and send it to the applicant (file_reason is kept so they can see it)
+            $stmt = $conn->prepare(
+                "UPDATE applications
+                    SET boss_status = 'rejected', boss_reason = ?, application_status = 'rejected'
+                  WHERE id = ? AND application_status = 'returned_to_boss' AND file_status = 'rejected'"
+            );
+            $stmt->bind_param('si', $postReason, $postId);
+        }
+        $stmt->execute();
+        if ($stmt->affected_rows === 1) {
+            $rrMessage = $postAction === 'send_back'
+                ? 'Application sent back to Personal File.'
+                : 'Application rejected and sent to the applicant for correction.';
+            $rrType = $postAction === 'send_back' ? 'success' : 'error';
+            if ($postAction === 'reject') {
+                $notifStmt = $conn->prepare(
+                    "INSERT INTO notifications (nic, title, message, is_read)
+                     SELECT nic, 'Application Rejected',
+                            CONCAT('Your application was rejected. Personal File reason: ', IFNULL(file_reason, '-'),
+                                   ' | Immediate Boss reason: ', ?),
+                            0
+                     FROM applications WHERE id = ?"
+                );
+                $notifStmt->bind_param('si', $postReason, $postId);
+                $notifStmt->execute();
+                $notifStmt->close();
+            }
+        } else {
+            $rrMessage = 'This application is no longer awaiting your decision.';
+            $rrType = 'error';
+        }
+        $stmt->close();
+    } elseif ($postAction === 'reject') {
+        $rrMessage = 'A rejection reason is required.';
+        $rrType = 'error';
+    }
+}
+
+$sql = "SELECT a.id, a.application_no, a.nic, a.computer_no, a.boss_status,
+               a.boss_reason, a.file_status, a.file_reason, a.application_status, u.name, u.applicant_designation
+        FROM applications AS a
+        INNER JOIN users AS u ON u.nic = a.nic
+        WHERE a.boss_status IN ('approved', 'rejected')";
+
+if ($searchQuery !== '') {
+    $sql .= " AND (a.application_no LIKE ? OR a.nic LIKE ? OR a.computer_no LIKE ? OR u.name LIKE ?)";
+    $searchTerm = '%' . $searchQuery . '%';
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date DESC, a.id DESC');
+    $stmt->bind_param('ssss', $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+} else {
+    $stmt = $conn->prepare($sql . ' ORDER BY a.application_date DESC, a.id DESC');
+}
+$stmt->execute();
+$logData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+$conn->close();
+
+foreach ($logData as $item) {
+    $item['can_act'] = false;
+    if ($item['application_status'] === 'returned_to_boss' && $item['file_status'] === 'rejected') {
+        // Rejected by Personal File and sent back to the Immediate Boss: shown in the Rejected List with actions
+        $item['reason'] = 'Returned by Personal File: ' . ($item['file_reason'] ?: '-');
+        $item['can_act'] = true;
+        $rejectedList[] = $item;
+        continue;
+    }
+    $item['reason'] = $item['boss_reason'] ?: '-';
+    if ($item['boss_status'] === 'approved') {
+        $approvedList[] = $item;
+    } else {
+        $rejectedList[] = $item;
+    }
+}
+
+// Admin Header එක ඇතුළත් කිරීම[cite: 13]
+require_once __DIR__ . '/../layouts/admin_header.php';
+?>
+
+<style>
+    :root {
+        --primary-color: #7A1C1C;
+        --primary-dark: #571a1a;
+        --danger-color: #991b1b;
+        --danger-dark: #7f1d1d;
+        --bg-color: #f8fafc;
+        --card-bg: #ffffff;
+        --text-main: #1e293b;
+        --border-color: #e2e8f0;
+    }
+
+    /* Dynamic Scrollbar Control based on content height[cite: 13] */
+    html {
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    body {
+        margin: 0;
+        padding: 0;
+        background-color: var(--bg-color);
+        overflow-x: hidden;
+    }
+
+    /* IB Dashboard Balanced Full-Width Layout[cite: 13] */
+    .approval-container {
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+        padding: 20px 30px;
+        box-sizing: border-box;
+    }
+
+    .approval-header {
+        text-align: center;
+        margin-bottom: 25px;
+    }
+
+    .approval-container h2 {
+        font-size: 1.8rem;
+        color: var(--primary-color);
+        margin-bottom: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        text-decoration: underline;
+        text-underline-offset: 6px;
+        font-weight: 700; /* Updated to match Resubmitted list style */
+    }
+
+    .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 20px;
+        color: var(--primary-color);
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+
+    .back-link:hover {
+        text-decoration: underline;
+    }
+
+    /* Tab Switcher Buttons[cite: 13] */
+    .tab-buttons-bar {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+
+    .tab-btn {
+        background-color: #e2e8f0;
+        color: #334155;
+        border: none;
+        padding: 10px 22px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.9rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        text-decoration: none;
+        transition: all 0.2s ease;
+    }
+
+    /* Approved & Rejected Tab Active States (Both now use Primary Color)[cite: 13] */
+    #approvedTabBtn.active, 
+    #rejectedTabBtn.active {
+        background-color: var(--primary-color);
+        color: white;
+        box-shadow: 0 4px 6px -1px rgba(122, 28, 28, 0.2);
+    }
+
+    .tab-btn:hover:not(.active) {
+        background-color: #cbd5e1;
+    }
+
+    /* Search and Print Action Card[cite: 13] */
+    .search-card {
+        background: var(--card-bg);
+        padding: 18px 22px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.04);
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
+        border: 1px solid var(--border-color);
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .search-wrapper {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex: 1;
+        min-width: 280px;
+    }
+
+    /* Search input container with internal cancel symbol[cite: 13] */
+    .search-input-container {
+        position: relative;
+        flex: 1;
+        max-width: 350px;
+    }
+
+    .search-input {
+        padding: 10px 36px 10px 14px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        font-size: 0.9rem;
+        width: 100%;
+        outline: none;
+        box-sizing: border-box;
+    }
+
+    .search-input:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(122, 28, 28, 0.1);
+    }
+
+    .clear-input-btn {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #94a3b8;
+        text-decoration: none;
+        font-size: 1rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: color 0.2s;
+    }
+
+    .clear-input-btn:hover {
+        color: #1e293b;
+    }
+
+    .search-btn, .print-btn {
+        border: none;
+        padding: 10px 18px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.9rem;
+        text-decoration: none;
+        transition: background 0.2s;
+    }
+
+    /* Search Buttons[cite: 13] */
+    .search-btn, .rejected-search-btn {
+        background-color: var(--primary-color);
+        color: white;
+    }
+    .search-btn:hover, .rejected-search-btn:hover {
+        background-color: var(--primary-dark);
+    }
+
+    .print-btn {
+        background-color: #0284c7;
+        color: white;
+    }
+    .print-btn:hover {
+        background-color: #0369a1;
+    }
+
+    .section-print-title {
+        font-size: 1.25rem;
+        margin-bottom: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .badge {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8rem;
+    }
+
+    .badge-approved {
+        background-color: #dcfce7;
+        color: #166534;
+    }
+
+    .badge-rejected {
+        background-color: #fee2e2;
+        color: #991b1b;
+    }
+
+    /* Table Card Containers[cite: 13] */
+    .table-card {
+        background: var(--card-bg);
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+        border-top: 5px solid var(--primary-color);
+        overflow-x: auto;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .table-card-rejected {
+        border-top: 5px solid var(--primary-color);
+    }
+
+    .table-responsive {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: center;
+        font-size: 0.9rem;
+        white-space: nowrap;
+    }
+
+    th, td {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    th {
+        background-color: #f8fafc;
+        color: var(--text-main);
+        font-weight: 700;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+        border-bottom: 2px solid var(--border-color);
+    }
+
+    tr:hover {
+        background-color: #f1f5f9;
+    }
+
+    .reason-text {
+        color: #475569;
+        font-style: italic;
+        white-space: normal;
+        min-width: 220px;
+        text-align: left;
+    }
+
+    /* Mobile Responsive Enhancements[cite: 13] */
+    @media (max-width: 768px) {
+        .approval-container {
+            padding: 10px 15px;
+        }
+        .approval-container h2 {
+            font-size: 1.4rem;
+        }
+        .search-card {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .search-wrapper {
+            width: 100%;
+            min-width: 0;
+            gap: 8px;
+        }
+        .search-input-container {
+            max-width: 100%;
+            min-width: 0;
+        }
+        .search-input {
+            padding: 12px 36px 12px 14px;
+            font-size: 1rem;
+        }
+        .search-btn, .rejected-search-btn {
+            width: auto;
+            flex: 0 0 auto;
+            padding: 8px 12px;
+            font-size: 0.8rem;
+            white-space: nowrap;
+        }
+        .print-btn {
+            width: 100%;
+            justify-content: center;
+        }
+    }
+
+    /* Print Specific CSS[cite: 13] */
+    @media print {
+        @page {
+            size: landscape;
+            margin: 5mm;
+        }
+
+        html, body {
+            background-color: #ffffff !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        .back-link, .search-card, .tab-buttons-bar {
+            display: none !important;
+        }
+
+        .table-section {
+            display: none !important;
+        }
+
+        .table-section.print-active {
+            display: block !important;
+        }
+
+        .table-card, .table-card-rejected {
+            box-shadow: none !important;
+            border: none !important;
+            padding: 0 !important;
+        }
+
+        table {
+            width: 100% !important;
+            font-size: 8.5pt;
+        }
+
+        th, td {
+            padding: 8px 10px !important;
+        }
+    }
+</style>
+
+<main class="approval-container">
+    <a href="IB_Dashboard.php" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Dashboard</a>
+    
+    <div class="approval-header">
+        <h2>Approved & Rejected Applications Log</h2>
+    </div>
+
+    <!-- Tab Switcher Buttons[cite: 13] -->
+    <?php if (!empty($rrMessage)): ?>
+        <div class="rr-alert <?php echo $rrType === 'error' ? 'error' : ''; ?>"><?php echo htmlspecialchars($rrMessage); ?></div>
+    <?php endif; ?>
+
+    <div class="tab-buttons-bar">
+        <a href="?tab=approved<?php echo $searchQuery !== '' ? '&search=' . urlencode($searchQuery) : ''; ?>" id="approvedTabBtn" class="tab-btn <?php echo $activeTab === 'approved' ? 'active' : ''; ?>">
+            <i class="fa-solid fa-clipboard-check"></i> Approved List
+        </a>
+        <a href="?tab=rejected<?php echo $searchQuery !== '' ? '&search=' . urlencode($searchQuery) : ''; ?>" id="rejectedTabBtn" class="tab-btn <?php echo $activeTab === 'rejected' ? 'active' : ''; ?>">
+            <i class="fa-solid fa-clipboard-check"></i> Rejected List
+        </a>
+    </div>
+
+    <!-- 1. Approved Table Section[cite: 13] -->
+    <div id="approvedSection" class="table-section <?php echo $activeTab === 'approved' ? 'print-active' : ''; ?>" style="display: <?php echo $activeTab === 'approved' ? 'block' : 'none'; ?>;">
+        <h3 class="section-print-title" style="color: var(--primary-color);">Approved List</h3>
+        
+        <form method="GET" action="" class="search-card">
+            <input type="hidden" name="tab" value="approved">
+            <div class="search-wrapper">
+                <div class="search-input-container">
+                    <input type="text" name="search" id="approvedSearchInput" class="search-input" placeholder="Search by NIC or Name..." value="<?php echo htmlspecialchars($activeTab === 'approved' ? $searchQuery : ''); ?>">
+                    <?php if ($activeTab === 'approved' && $searchQuery !== ''): ?>
+                        <a href="?tab=approved" class="clear-input-btn" title="Clear Search"><i class="fa-solid fa-xmark"></i></a>
+                    <?php endif; ?>
+                </div>
+                <button type="submit" class="search-btn"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
+            </div>
+            <button type="button" class="print-btn" onclick="window.print()"><i class="fa-solid fa-print"></i> Print / Save as PDF</button>
+        </form>
+
+        <div class="table-card">
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>No.</th>
+                            <th>Application Number</th>
+                            <th>NIC</th>
+                            <th>Computer Number</th>
+                            <th>Name</th>
+                            <th>Designation</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($approvedList)): ?>
+                            <tr><td colspan="7" style="text-align: center; color: #64748b; padding: 25px;">No approved records found.</td></tr>
+                        <?php else: ?>
+                            <?php $i = 1; foreach ($approvedList as $item): ?>
+                                <tr>
+                                    <td><?php echo $i++; ?></td>
+                                    <td><strong><?php echo htmlspecialchars((string)($item['application_no'] ?? $item['id'])); ?></strong></td>
+                                    <td><?php echo htmlspecialchars((string)($item['nic'] ?? '')); ?></td>
+                                    <td><?php echo htmlspecialchars((string)($item['computer_no'] ?? '')); ?></td>
+                                    <td><?php echo htmlspecialchars((string)($item['name'] ?? '')); ?></td>
+                                    <td><?php echo htmlspecialchars((string)($item['applicant_designation'] ?? '')); ?></td>
+                                    <td><span class="badge badge-approved"><i class="fa-solid fa-check" title="Approved"></i></span></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Rejected Table Section[cite: 13] -->
+    <div id="rejectedSection" class="table-section <?php echo $activeTab === 'rejected' ? 'print-active' : ''; ?>" style="display: <?php echo $activeTab === 'rejected' ? 'block' : 'none'; ?>;">
+        <h3 class="section-print-title" style="color: var(--primary-color);">Rejected List</h3>
+
+        <form method="GET" action="" class="search-card">
+            <input type="hidden" name="tab" value="rejected">
+            <div class="search-wrapper">
+                <div class="search-input-container">
+                    <input type="text" name="search" id="rejectedSearchInput" class="search-input" placeholder="Search by NIC or Name..." value="<?php echo htmlspecialchars($activeTab === 'rejected' ? $searchQuery : ''); ?>">
+                    <?php if ($activeTab === 'rejected' && $searchQuery !== ''): ?>
+                        <a href="?tab=rejected" class="clear-input-btn" title="Clear Search"><i class="fa-solid fa-xmark"></i></a>
+                    <?php endif; ?>
+                </div>
+                <button type="submit" class="search-btn rejected-search-btn"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
+            </div>
+            <button type="button" class="print-btn" onclick="window.print()"><i class="fa-solid fa-print"></i> Print / Save as PDF</button>
+        </form>
+
+        <div class="table-card table-card-rejected">
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>No.</th>
+                            <th>Application Number</th>
+                            <th>NIC</th>
+                            <th>Computer Number</th>
+                            <th>Name</th>
+                            <th>Designation</th>
+                            <th>Status</th>
+                            <th>Remarks / Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($rejectedList)): ?>
+                            <tr><td colspan="8" style="text-align: center; color: #64748b; padding: 25px;">No rejected records found.</td></tr>
+                        <?php else: ?>
+                            <?php $i = 1; foreach ($rejectedList as $item): ?>
+                                <tr>
+                                    <td><?php echo $i++; ?></td>
+                                    <td><strong><?php echo htmlspecialchars((string)($item['application_no'] ?? $item['id'])); ?></strong></td>
+                                    <td><?php echo htmlspecialchars((string)($item['nic'] ?? '')); ?></td>
+                                    <td><?php echo htmlspecialchars((string)($item['computer_no'] ?? '')); ?></td>
+                                    <td><?php echo htmlspecialchars((string)($item['name'] ?? '')); ?></td>
+                                    <td><?php echo htmlspecialchars((string)($item['applicant_designation'] ?? '')); ?></td>
+                                    <td><span class="badge badge-rejected"><i class="fa-solid fa-xmark" title="Rejected"></i></span></td>
+                                    <td><span class="reason-text"><?php echo htmlspecialchars($item['reason']); ?></span></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</main>
+
+<style>
+    .rr-alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 15px; font-weight: 600; background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .rr-alert.error { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+</style>
+
+<?php
+// Admin Footer එක ඇතුළත් කිරීම[cite: 13]
+require_once __DIR__ . '/../layouts/admin_footer.php';
+?>
